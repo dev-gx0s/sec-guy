@@ -1,0 +1,14 @@
+# === Confidential source documents — NEVER publish ===
+*.docx
+*.doc
+*.pdf
+
+# === Un-redacted image backups — NEVER publish ===
+**/*_orig.*
+**/*_white.*
+**/*_full.*
+images/mi23/Screenshot*.png
+
+# === Local tooling / scaffold ===
+.claude/
+Page.html

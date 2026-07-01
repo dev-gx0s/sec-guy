@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>gx0s — Security Incidents & Incident Response</title>
+  <meta name="description" content="Security incident write-ups, detection engineering, and incident-response playbooks.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+
+  <style>
+    body {
+      background: #f4f6f8;
+    }
+    .masthead.segment {
+      padding: 2em 0;
+      background: linear-gradient(135deg, #1b1c1d 0%, #2c3e50 100%);
+    }
+    .masthead .ui.header {
+      color: #fff;
+    }
+    .masthead h1.ui.header {
+      font-size: 2em;
+      margin-top: 0.3em;
+    }
+    .masthead h2 {
+      color: rgba(255, 255, 255, 0.85);
+      font-weight: 400;
+    }
+    .main.container {
+      margin-top: 3em;
+      margin-bottom: 3em;
+      padding: 0 2.5em;
+    }
+    /* Large, screen-adaptive incident cards */
+    .main .ui.cards {
+      justify-content: center;
+    }
+    .main .ui.cards > .card {
+      width: 24em;
+      font-size: 1.05em;
+    }
+    .section-header {
+      margin-top: 2em !important;
+    }
+    .post-card .meta .severity {
+      font-weight: 700;
+    }
+    .profile.segment {
+      padding: 3em 0;
+      background: #fff;
+    }
+    .footer.segment {
+      padding: 0.75em 0;
+      background: #fff;
+      color: rgba(0, 0, 0, 0.87);
+      font-size: 0.9em;
+    }
+    .footer.segment a {
+      color: #4183c4;
+    }
+    /* Green hover (not on the brand) */
+    .ui.inverted.menu a.item:not(.header):hover {
+      background: #21ba45;
+      color: #fff;
+    }
+    .post-card:hover .header {
+      color: #21ba45 !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== Navigation ===== -->
+  <div class="ui fixed inverted menu">
+    <div class="ui container">
+      <a href="index.html" class="header item">
+        <i class="shield alternate icon"></i>
+        gx0s
+      </a>
+      <a href="index.html" class="active item">Home</a>
+      <a href="#profile" class="item">About</a>
+      <div class="right menu">
+        <div class="item">
+          <div class="ui transparent inverted icon input">
+            <input type="text" id="blogSearch" placeholder="Search">
+            <i class="search icon"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Masthead / Hero ===== -->
+  <div class="ui inverted vertical masthead center aligned segment" style="margin-top: 2.85em;">
+    <div class="ui text container">
+      <i class="bug icon big" style="color:#fff;"></i>
+      <h1 class="ui inverted header">
+        Real Security Journey
+      </h1>
+      <h2>Real-world cases — the incidents I've taken apart, the intrusions I've chased, and the lessons left behind.</h2>
+    </div>
+  </div>
+
+  <!-- ===== Blog Post Cards ===== -->
+  <div class="ui main fluid container" id="posts">
+
+    <h2 class="ui horizontal divider header section-header">
+      <i class="exclamation triangle icon" style="font-size: 0.65em;"></i>
+      Cases
+    </h2>
+
+    <div class="ui stackable link cards">
+
+      <!-- Fake Claude -->
+      <a class="card post-card" href="post-fake-claude.html">
+        <div class="image">
+          <img src="images/cards/fake-claude.svg" alt="Fake Claude infostealer">
+        </div>
+        <div class="content">
+          <div class="right floated meta">2026-05-13</div>
+          <i class="user secret icon"></i> Infostealer
+        </div>
+        <div class="content">
+          <div class="header">The Fake Claude Code Installer That Steals Everything</div>
+          <div class="description">
+            A counterfeit Claude Code installer mirrors the real one but splices in a dropper —
+            deploying a credential-stealing infostealer and a scheduled-task HTTP C2.
+          </div>
+        </div>
+        <div class="extra content">
+          <span><i class="tag icon"></i> infostealer, PowerShell, ETW bypass, C2</span>
+          <span class="right floated"><i class="clock outline icon"></i> 10 min read</span>
+        </div>
+      </a>
+
+      <!-- Blender ransomware -->
+      <a class="card post-card" href="post-blender-ransomware.html">
+        <div class="image">
+          <img src="images/cards/blender.svg" alt="Malicious Blender file">
+        </div>
+        <div class="content">
+          <div class="right floated meta">2025-10-29</div>
+          <i class="cube icon"></i> Malware
+        </div>
+        <div class="content">
+          <div class="header">When a Blender Model Drops Malware</div>
+          <div class="description">
+            Free 3D model files hid a Python exec() payload that forked PowerShell,
+            downloaded packed executables, set up persistence, and beaconed to C2.
+          </div>
+        </div>
+        <div class="extra content">
+          <span><i class="tag icon"></i> Blender, Python, ransomware, C2</span>
+          <span class="right floated"><i class="clock outline icon"></i> 9 min read</span>
+        </div>
+      </a>
+
+      <!-- ClickFix -->
+      <a class="card post-card" href="post-clickfix.html">
+        <div class="image">
+          <img src="images/cards/clickfix.svg" alt="ClickFix fake CAPTCHA">
+        </div>
+        <div class="content">
+          <div class="right floated meta">2025-03-06</div>
+          <i class="mouse pointer icon"></i> ClickFix
+        </div>
+        <div class="content">
+          <div class="header">ClickFix: A Fake CAPTCHA That Runs Malware</div>
+          <div class="description">
+            A fake "verify you're human" page tricks the user into pasting an MSHTA command
+            via Win+R — leading to PowerShell, svchost injection, and C2 in Russia.
+          </div>
+        </div>
+        <div class="extra content">
+          <span><i class="tag icon"></i> ClickFix, MSHTA, PowerShell, injection</span>
+          <span class="right floated"><i class="clock outline icon"></i> 6 min read</span>
+        </div>
+      </a>
+
+      <!-- Malware Investigation -->
+      <a class="card post-card" href="post-malware-investigation.html">
+        <div class="image">
+          <img src="images/cards/fake-zoom.svg" alt="Fake Zoom PowerShell loader">
+        </div>
+        <div class="content">
+          <div class="right floated meta">2023-12-05</div>
+          <i class="bug icon"></i> Malware
+        </div>
+        <div class="content">
+          <div class="header">Fake Zoom Installer → PowerShell Loader</div>
+          <div class="description">
+            A real investigation: a malicious Zoom installer drops a PowerShell loader that
+            beacons to a C2, pulls GPG-encrypted payloads, and runs Active Directory recon.
+          </div>
+        </div>
+        <div class="extra content">
+          <span><i class="tag icon"></i> PowerShell, C2, GPG, AD recon</span>
+          <span class="right floated"><i class="clock outline icon"></i> 10 min read</span>
+        </div>
+      </a>
+
+    </div>
+
+  </div>
+
+  <!-- ===== Divider between Incidents and About ===== -->
+  <div class="ui container">
+    <h2 class="ui horizontal divider header">
+      <i class="address card outline icon"></i>
+    </h2>
+  </div>
+
+  <!-- ===== Profile ===== -->
+  <div class="ui vertical profile segment" id="profile">
+    <div class="ui middle aligned stackable grid container">
+      <div class="row">
+        <div class="four wide center aligned column">
+          <i class="user circle icon" style="font-size: 9em; color:#2c3e50;"></i>
+          <h3 class="ui header">Amine Badaoui</h3>
+          <p>Real Security Guy</p>
+        </div>
+        <div class="twelve wide column">
+          <h3 class="ui header">About Me</h3>
+          <p style="font-size: 1.15em;">
+            I'm a security professional who works both sides of the fight — <strong>defending
+            environments and attacking them to find the gaps first</strong>. Day to day that
+            means investigating and responding to real incidents, hunting threats, building
+            detections, and <strong>performing security testing and penetration tests</strong> to
+            surface weaknesses before an attacker does.
+          </p>
+          <p style="font-size: 1.15em;">
+            I like turning messy, real-world attacks into clear stories: what happened, how it
+            was caught, and how to stop it next time. This blog is where I document those cases —
+            the malware I've pulled apart, the intrusions I've chased down, and the lessons that
+            came out of them.
+          </p>
+          <p style="font-size: 1.15em;">
+            I'm also <strong>always exploring new trends and evaluating them</strong> — testing
+            emerging attacker techniques, tools, and defenses to understand what actually matters
+            and bring it back into how I protect and test environments.
+          </p>
+
+          <h4 class="ui header">Core Skills</h4>
+          <div class="ui labels">
+            <span class="ui label"><i class="shield icon"></i> Incident Response</span>
+            <span class="ui label"><i class="search icon"></i> Threat Hunting</span>
+            <span class="ui label"><i class="server icon"></i> SIEM / SOC</span>
+            <span class="ui label"><i class="bug icon"></i> Malware Triage</span>
+            <span class="ui label"><i class="windows icon"></i> Endpoint Forensics</span>
+            <span class="ui label"><i class="cloud icon"></i> Cloud Security</span>
+            <span class="ui label"><i class="code icon"></i> Code Security</span>
+            <span class="ui label"><i class="sync icon"></i> CI/CD Security</span>
+            <span class="ui label"><i class="user secret icon"></i> Penetration Testing</span>
+            <span class="ui label"><i class="gamepad icon"></i> Game Security</span>
+          </div>
+
+          <div class="ui hidden divider"></div>
+
+          <a href="mailto:abadaoui@bhvr.com" class="ui green button">
+            <i class="mail icon"></i> Email Me
+          </a>
+          <a href="#" class="ui linkedin button">
+            <i class="linkedin icon"></i> LinkedIn
+          </a>
+          <a href="#" class="ui black button">
+            <i class="github icon"></i> GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="ui vertical footer segment">
+    <div class="ui center aligned container">
+      <p>&copy; 2026 gx0s — just a real security guy.</p>
+    </div>
+  </div>
+
+  <!-- ===== Blog search ===== -->
+  <script>
+    $('#blogSearch').on('keyup', function () {
+      var query = $(this).val().toLowerCase().trim();
+      var visible = 0;
+      $('.post-card').each(function () {
+        var match = $(this).text().toLowerCase().indexOf(query) !== -1;
+        $(this).css('display', match ? '' : 'none');
+        if (match) visible++;
+      });
+      $('#noResults').css('display', visible === 0 ? 'block' : 'none');
+    });
+  </script>
+
+</body>
+
+</html>
