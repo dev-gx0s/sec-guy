@@ -371,9 +371,20 @@ Authorization: Bearer &lt;token&gt;
     { "LogicalName": "contoso_payroll", "EntitySetName": "contoso_payrolls", "DisplayName": { ... "Payroll" } }
   ]
 }</code></pre>
-    <p>The names alone map the crown jewels. Each <code>EntitySetName</code> is a live OData
-    collection, so reading one is the same call as any built-in table — and because these tables are
-    often stood up quickly, they rarely have field-level security on the columns that need it most:</p>
+    <p>The names alone map the crown jewels. Ranking the discovered custom tables by how much they'd
+    hurt in a breach gives a clear list to work down:</p>
+    <table class="ui celled striped table">
+      <thead><tr><th>Entity set (OData)</th><th>Logical name</th><th>Likely sensitive contents</th><th>Priority</th></tr></thead>
+      <tbody>
+        <tr><td><code>cr123_claims</code></td><td><code>cr123_claim</code></td><td>Claim records — claimant name, national ID, email, payout amounts</td><td><span style="color:#db2828;font-weight:700;">High</span></td></tr>
+        <tr><td><code>contoso_payrolls</code></td><td><code>contoso_payroll</code></td><td>Salaries, bank account &amp; sort codes, tax identifiers</td><td><span style="color:#db2828;font-weight:700;">High</span></td></tr>
+        <tr><td><code>cr123_contracts</code></td><td><code>cr123_contract</code></td><td>Counterparties, contract values, signed terms</td><td><span style="color:#f2711c;font-weight:700;">Medium</span></td></tr>
+        <tr><td><code>new_onboardings</code></td><td><code>new_onboarding</code></td><td>New-hire ID scans, home addresses, emergency contacts</td><td><span style="color:#f2711c;font-weight:700;">Medium</span></td></tr>
+      </tbody>
+    </table>
+    <p>Each <code>EntitySetName</code> is a live OData collection, so reading one is the same call as
+    any built-in table — and because these tables are often stood up quickly, they rarely have
+    field-level security on the columns that need it most:</p>
     <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/cr123_claims?$select=cr123_claimnumber,cr123_nationalid,cr123_claimantemail&amp;$top=50
 Authorization: Bearer &lt;token&gt;</code></pre>
     <div class="ui segment">
