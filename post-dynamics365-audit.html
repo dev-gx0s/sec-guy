@@ -446,27 +446,29 @@ for n in notes:
     </div>
 
     <h2 class="ui header"><i class="paperclip icon"></i> Activity Attachments</h2>
-    <p>Email sent and received through Dynamics keeps its attachments too — in the
-    <code>activitymimeattachment</code> table, the base64 <code>body</code> of every file that rode an
-    email or appointment. Same pull, different table, and often the richer one because it captures
-    what people <em>send</em>, not just what they store:</p>
-    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/activitymimeattachments
-      ?$select=filename,mimetype,subject
+    <p>Files attached to activities land in the <code>activityfileattachment</code> table — the modern
+    File-column store. Unlike Notes, the bytes aren't inline base64; each row points at a
+    <code>fileattachment</code> record, and you pull the content from that record's file-download
+    endpoint. So it's a two-hop grab: enumerate the links, then stream each file:</p>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/activityfileattachments
+      ?$select=activityfileattachmentid,_objectid_value,_fileattachmentid_value
 Authorization: Bearer &lt;token&gt;</code></pre>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre><code class="language-python">import base64, pathlib
+      <pre><code class="language-python">import pathlib
 
-atts = session.get(f"{ORG}/api/data/v9.2/activitymimeattachments", params={
-    "$select": "activitymimeattachmentid,filename,mimetype",
+links = session.get(f"{ORG}/api/data/v9.2/activityfileattachments", params={
+    "$select": "activityfileattachmentid,_fileattachmentid_value",
     "$top":    5000,
 }).json()["value"]
 
-for a in atts:
-    body = session.get(f"{ORG}/api/data/v9.2/activitymimeattachments({a['activitymimeattachmentid']})",
-                       params={"$select": "body"}).json()["body"]
-    pathlib.Path(a["filename"]).write_bytes(base64.b64decode(body))
-    print("saved", a["filename"], a["mimetype"])</code></pre>
+for a in links:
+    fid  = a["_fileattachmentid_value"]
+    meta = session.get(f"{ORG}/api/data/v9.2/fileattachments({fid})",
+                       params={"$select": "filename,mimetype"}).json()
+    data = session.get(f"{ORG}/api/data/v9.2/fileattachments({fid})/file/$value").content
+    pathlib.Path(meta["filename"]).write_bytes(data)
+    print("saved", meta["filename"], meta["mimetype"])</code></pre>
     </div>
 
     <h2 class="ui header"><i class="cogs icon"></i> Workflows &amp; Processes</h2>
