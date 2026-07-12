@@ -173,7 +173,9 @@ az account get-access-token --resource https://org.crm.dynamics.com</pre>
     (<code>&lt;org&gt;/.default</code>), and set up a <code>requests</code> session with the OData
     headers the Web API expects. Every call in the rest of this post rides on this
     <code>session</code>:</p>
-    <pre>import requests
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre>import requests
 from azure.identity import AzureCliCredential   # pip install azure-identity requests
 
 ORG = "https://org.crm.dynamics.com"
@@ -192,6 +194,7 @@ session.headers.update({
 # Smoke test — the very first recon call
 r = session.get(f"{ORG}/api/data/v9.2/WhoAmI")
 print(r.status_code, r.json())</pre>
+    </div>
     <p>For an unattended assessment you'd swap <code>AzureCliCredential</code> for
     <code>ClientSecretCredential</code> (an app registration's client ID + secret) or
     <code>CertificateCredential</code> — the app just needs to be provisioned as an application user
@@ -231,6 +234,17 @@ Authorization: Bearer &lt;token&gt;
     { "name": "Claims Processing",  "parentbusinessunitid": { "name": "EMEA Support" } }
   ]
 }</pre>
+    <p>The same call in Python, walking the tree off the shared <code>session</code>:</p>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre>r = session.get(f"{ORG}/api/data/v9.2/businessunits", params={
+    "$select": "name,isdisabled",
+    "$expand": "parentbusinessunitid($select=name)",
+})
+for bu in r.json()["value"]:
+    parent = (bu.get("parentbusinessunitid") or {}).get("name", "—")
+    print(f"{bu['name']:&lt;20} parent={parent}")</pre>
+    </div>
     <p>Cross-referencing my <code>BusinessUnitId</code> from WhoAmI against this tree tells me exactly
     where my identity sits and, therefore, what a "Business Unit"-scoped role would and wouldn't
     cover. It also names the sensitive units — <em>Claims Processing</em> was the one worth
@@ -254,6 +268,19 @@ Authorization: Bearer &lt;token&gt;
     ... hundreds more ...
   ]
 }</pre>
+    <p>In Python, that's a single paged request straight into a directory dump:</p>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre>r = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
+    "$select": "fullname,domainname,internalemailaddress,address1_composite,isdisabled",
+    "$expand": "businessunitid($select=name)",
+    "$filter": "isdisabled eq false",
+    "$top":    5000,
+})
+for u in r.json()["value"]:
+    bu = (u.get("businessunitid") or {}).get("name", "")
+    print(u["fullname"], u["domainname"], u.get("address1_composite"), "|", bu)</pre>
+    </div>
     <p>Then I turned the lens on my own token — a self-lookup by the <code>UserId</code> from WhoAmI,
     expanding the role association to see exactly what I hold:</p>
     <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers(a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d)
@@ -268,6 +295,18 @@ Authorization: Bearer &lt;token&gt;
     { "name": "System Administrator" }
   ]
 }</pre>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre>me = session.get(f"{ORG}/api/data/v9.2/WhoAmI").json()
+
+r = session.get(f"{ORG}/api/data/v9.2/systemusers({me['UserId']})", params={
+    "$select": "fullname,applicationid",
+    "$expand": "systemuserroles_association($select=name)",
+})
+u = r.json()
+roles = [x["name"] for x in u["systemuserroles_association"]]
+print(u["fullname"], "| app user:", bool(u.get("applicationid")), "| roles:", roles)</pre>
+    </div>
     <p>That last line is the tell: my token isn't a person at all — it's an <strong>application
     user</strong> (note the <code>applicationid</code>) carrying <strong>System Administrator</strong>.
     User recon just became admin recon.</p>
@@ -283,6 +322,24 @@ Authorization: Bearer &lt;token&gt;</pre>
     <p>And the accounts nobody watches — application users (service principals) — fall out of a single
     filter on <code>applicationid</code>:</p>
     <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid&amp;$filter=applicationid ne null</pre>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre># Every System Administrator — flag the non-human ones
+r = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
+    "$select": "fullname,domainname,applicationid,isdisabled",
+    "$filter": "systemuserroles_association/any(r:r/name eq 'System Administrator')",
+})
+for u in r.json()["value"]:
+    kind = "APP" if u.get("applicationid") else "user"
+    print(f"[{kind}] {u['fullname']} — {u.get('domainname')}")
+
+# Application users (service principals) — the accounts nobody watches
+apps = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
+    "$select": "fullname,applicationid",
+    "$filter": "applicationid ne null",
+}).json()["value"]
+print(f"{len(apps)} application users found")</pre>
+    </div>
     <p>The results were the finding. Alongside a healthy handful of interactive admins, the
     integration app from the user-recon step held <strong>System Administrator</strong> — and its
     client secret was pasted straight into a Power Automate flow connection with <strong>no
@@ -316,6 +373,24 @@ Authorization: Bearer &lt;token&gt;
     often stood up quickly, they rarely have field-level security on the columns that need it most:</p>
     <pre>GET https://org.crm.dynamics.com/api/data/v9.2/cr123_claims?$select=cr123_claimnumber,cr123_nationalid,cr123_claimantemail&amp;$top=50
 Authorization: Bearer &lt;token&gt;</pre>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre># 1) List every custom table
+defs = session.get(f"{ORG}/api/data/v9.2/EntityDefinitions", params={
+    "$select": "LogicalName,EntitySetName",
+    "$filter": "IsCustomEntity eq true",
+}).json()["value"]
+for e in defs:
+    print(e["LogicalName"], "->", e["EntitySetName"])
+
+# 2) Read one straight off its EntitySetName
+r = session.get(f"{ORG}/api/data/v9.2/cr123_claims", params={
+    "$select": "cr123_claimnumber,cr123_nationalid,cr123_claimantemail",
+    "$top":    50,
+})
+for row in r.json()["value"]:
+    print(row.get("cr123_claimnumber"), row.get("cr123_nationalid"))</pre>
+    </div>
     <p>Here the <code>cr123_claim</code> table held a <code>cr123_nationalid</code> column in
     cleartext, with no field security profile in the way — exactly the kind of data you never want to
     explain to a regulator, one OData query from any authenticated token.</p>
