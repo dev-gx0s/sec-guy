@@ -93,8 +93,9 @@
       <div class="kc-stage"><span class="kc-icon"><i class="sitemap icon"></i></span><div class="kc-title">Business Units</div><div class="kc-sub">Map the org hierarchy</div></div>
       <div class="kc-stage"><span class="kc-icon"><i class="address book icon"></i></span><div class="kc-title">User Recon</div><div class="kc-sub">Enumerate every systemuser</div></div>
       <div class="kc-stage"><span class="kc-icon"><i class="user secret icon"></i></span><div class="kc-title">Admin Recon</div><div class="kc-sub">Find the privileged accounts</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="table icon"></i></span><div class="kc-title">Custom Tables</div><div class="kc-sub">Locate the corporate data</div></div>
     </div>
-    <div class="kc-caption">The recon path — from one token to a full identity &amp; privilege map.</div>
+    <div class="kc-caption">The recon path — from one token to a full identity, privilege &amp; data map.</div>
 
     <h2 class="ui header"><i class="bullseye icon"></i> Why Dynamics 365 is a juicy target</h2>
     <p>Dynamics 365 sits on top of <strong>Dataverse</strong> (the platform formerly known as the
@@ -215,17 +216,34 @@ Authorization: Bearer &lt;token&gt;</pre>
     <em>narrow custom role</em> scoped to the exact tables they integrate; secrets should be
     short-lived, stored in Key Vault, and certificate auth preferred over a shared secret.</p>
 
-    <h2 class="ui header"><i class="wrench icon"></i> Remediation &amp; hardening checklist</h2>
-    <table class="ui teal celled striped table">
-      <thead><tr><th>Area</th><th>Action</th></tr></thead>
-      <tbody>
-        <tr><td>Application users</td><td>Narrow custom role per integration; short-lived secrets in Key Vault or certificate auth; disable unused app users; never leave a service principal on System Administrator.</td></tr>
-        <tr><td>Admin roles</td><td>Keep System Administrator to a small named set; use just-in-time / PIM elevation rather than standing admin.</td></tr>
-        <tr><td>Directory exposure</td><td>Treat <code>systemuser</code>/<code>businessunit</code> read as sensitive — restrict read depth so ordinary users can't export the whole directory via the Web API.</td></tr>
-        <tr><td>Environment fencing</td><td>Assign a security group to every non-trivial environment so only intended users become systemusers.</td></tr>
-        <tr><td>Monitoring</td><td>Enable Dataverse auditing; surface bulk <code>RetrieveMultiple</code> on <code>systemusers</code>/<code>roles</code> via Purview; alert on recon-shaped query volume.</td></tr>
-      </tbody>
-    </table>
+    <h2 class="ui header"><i class="table icon"></i> Custom Entity Discovery</h2>
+    <p>Identity and privilege are only half the picture — the other half is <em>where the corporate
+    data actually lives</em>. The out-of-box tables (<code>contact</code>, <code>account</code>,
+    <code>incident</code>) are predictable; the sensitive material tends to sit in <strong>custom
+    tables</strong> a maker built for the business — contracts, claims, payroll — which carry a
+    publisher prefix like <code>cr123_</code>, <code>contoso_</code>, or <code>new_</code>. The
+    metadata service hands the whole list over, filtered to just the custom entities so you skip the
+    hundreds of system tables:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/EntityDefinitions
+      ?$select=LogicalName,EntitySetName,DisplayName
+      &amp;$filter=IsCustomEntity eq true
+Authorization: Bearer &lt;token&gt;
+
+{
+  "value": [
+    { "LogicalName": "cr123_claim",     "EntitySetName": "cr123_claims",     "DisplayName": { ... "Claim" } },
+    { "LogicalName": "cr123_contract",  "EntitySetName": "cr123_contracts",  "DisplayName": { ... "Contract" } },
+    { "LogicalName": "contoso_payroll", "EntitySetName": "contoso_payrolls", "DisplayName": { ... "Payroll" } }
+  ]
+}</pre>
+    <p>The names alone map the crown jewels. Each <code>EntitySetName</code> is a live OData
+    collection, so reading one is the same call as any built-in table — and because these tables are
+    often stood up quickly, they rarely have field-level security on the columns that need it most:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/cr123_claims?$select=cr123_claimnumber,cr123_nationalid,cr123_claimantemail&amp;$top=50
+Authorization: Bearer &lt;token&gt;</pre>
+    <p>Here the <code>cr123_claim</code> table held a <code>cr123_nationalid</code> column in
+    cleartext, with no field security profile in the way — exactly the kind of data you never want to
+    explain to a regulator, one OData query from any authenticated token.</p>
 
     <h2 class="ui header"><i class="crosshairs icon"></i> MITRE ATT&amp;CK mapping</h2>
     <table class="ui blue celled striped table">
