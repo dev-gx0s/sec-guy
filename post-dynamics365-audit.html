@@ -9,14 +9,17 @@
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
   <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
   <style>
     body { background: #f4f6f8; }
     .article.container { margin: 6em auto 4em; width: 90vw !important; max-width: 1600px !important; }
     .article.container p { font-size: 1.1em; line-height: 1.7; text-align: justify; }
-    pre { background:#1b1c1d; color:#9cffb3; padding:1em; border-radius:6px; overflow-x:auto; font-size:0.85em; white-space:pre-wrap; word-break:break-all; }
+    pre { background:#282c34; border-radius:6px; overflow-x:auto; font-size:0.85em; margin:1em 0; }
+    pre code, pre code.hljs { display:block; padding:1em; background:transparent; color:#abb2bf; white-space:pre-wrap; word-break:break-all; border-radius:6px; }
     figure { margin: 1.5em 0; }
     figure img { width:100%; border:1px solid #d4d4d5; border-radius:6px; }
     figure.narrow { max-width:620px; margin-left:auto; margin-right:auto; }
@@ -164,18 +167,18 @@
     <p>Everything that follows needs a <strong>bearer token</strong> for the Dataverse org. The
     Web API is protected by Entra ID (Azure AD), and the quickest way to get an interactive token as
     yourself is the Azure CLI — <code>az login</code> opens a browser sign-in against the tenant:</p>
-    <pre># Opens a browser to sign in to Entra ID (Azure AD)
+    <pre><code class="language-bash"># Opens a browser to sign in to Entra ID (Azure AD)
 az login
 
 # Sanity check: can this identity mint a token for the Dataverse org?
-az account get-access-token --resource https://org.crm.dynamics.com</pre>
+az account get-access-token --resource https://org.crm.dynamics.com</code></pre>
     <p>From there, a few lines of Python reuse that CLI session, request a token scoped to the org
     (<code>&lt;org&gt;/.default</code>), and set up a <code>requests</code> session with the OData
     headers the Web API expects. Every call in the rest of this post rides on this
     <code>session</code>:</p>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre>import requests
+      <pre><code class="language-python">import requests
 from azure.identity import AzureCliCredential   # pip install azure-identity requests
 
 ORG = "https://org.crm.dynamics.com"
@@ -193,7 +196,7 @@ session.headers.update({
 
 # Smoke test — the very first recon call
 r = session.get(f"{ORG}/api/data/v9.2/WhoAmI")
-print(r.status_code, r.json())</pre>
+print(r.status_code, r.json())</code></pre>
     </div>
     <p>For an unattended assessment you'd swap <code>AzureCliCredential</code> for
     <code>ClientSecretCredential</code> (an app registration's client ID + secret) or
@@ -205,7 +208,7 @@ print(r.status_code, r.json())</pre>
     identity your token represents, and which organization and business unit it lands in. The
     <code>WhoAmI</code> function answers all three in a single GET (it still needs a valid bearer
     token — it just takes no parameters):</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/WhoAmI
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/WhoAmI
 Authorization: Bearer &lt;token&gt;
 
 {
@@ -213,7 +216,7 @@ Authorization: Bearer &lt;token&gt;
   "UserId":         "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
   "BusinessUnitId": "6f4d0a11-77aa-4b2c-9d3e-1122334455aa",
   "OrganizationId": "9e8f7d6c-3b2a-4c1d-8e9f-aabbccddeeff"
-}</pre>
+}</code></pre>
     <p>Two GUIDs drive everything that follows. <code>UserId</code> is the primary key of my own row
     in <code>systemuser</code> (user recon). <code>BusinessUnitId</code> is my row in
     <code>businessunit</code> — the anchor for mapping the org.</p>
@@ -223,7 +226,7 @@ Authorization: Bearer &lt;token&gt;
     depth of "Business Unit" means <em>this BU and below</em> — so before you can reason about what
     any role actually reaches, you have to map the tree. The <code>businessunit</code> table hands it
     over, parent pointers and all:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/businessunits?$select=name,isdisabled&amp;$expand=parentbusinessunitid($select=name)
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/businessunits?$select=name,isdisabled&amp;$expand=parentbusinessunitid($select=name)
 Authorization: Bearer &lt;token&gt;
 
 {
@@ -233,17 +236,17 @@ Authorization: Bearer &lt;token&gt;
     { "name": "EMEA Support",       "parentbusinessunitid": { "name": "Contoso (root)" } },
     { "name": "Claims Processing",  "parentbusinessunitid": { "name": "EMEA Support" } }
   ]
-}</pre>
+}</code></pre>
     <p>The same call in Python, walking the tree off the shared <code>session</code>:</p>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre>r = session.get(f"{ORG}/api/data/v9.2/businessunits", params={
+      <pre><code class="language-python">r = session.get(f"{ORG}/api/data/v9.2/businessunits", params={
     "$select": "name,isdisabled",
     "$expand": "parentbusinessunitid($select=name)",
 })
 for bu in r.json()["value"]:
     parent = (bu.get("parentbusinessunitid") or {}).get("name", "—")
-    print(f"{bu['name']:&lt;20} parent={parent}")</pre>
+    print(f"{bu['name']:&lt;20} parent={parent}")</code></pre>
     </div>
     <p>Cross-referencing my <code>BusinessUnitId</code> from WhoAmI against this tree tells me exactly
     where my identity sits and, therefore, what a "Business Unit"-scoped role would and wouldn't
@@ -255,7 +258,7 @@ for bu in r.json()["value"]:
     it turns into a bulk export of names, login names, email addresses, and even postal addresses —
     a ready-made phishing, password-spray, and physical-targeting list. I paged the enabled users,
     tagged by business unit:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
       ?$select=fullname,domainname,internalemailaddress,address1_composite,isdisabled
       &amp;$expand=businessunitid($select=name)
       &amp;$filter=isdisabled eq false&amp;$top=5000
@@ -267,11 +270,11 @@ Authorization: Bearer &lt;token&gt;
     { "fullname": "Omar K.", "domainname": "omar.k@example.com", "address1_composite": "14 Rue de la Paix, 75002 Paris, France",     "businessunitid": { "name": "Claims Processing" } },
     ... hundreds more ...
   ]
-}</pre>
+}</code></pre>
     <p>In Python, that's a single paged request straight into a directory dump:</p>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre>r = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
+      <pre><code class="language-python">r = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
     "$select": "fullname,domainname,internalemailaddress,address1_composite,isdisabled",
     "$expand": "businessunitid($select=name)",
     "$filter": "isdisabled eq false",
@@ -279,11 +282,11 @@ Authorization: Bearer &lt;token&gt;
 })
 for u in r.json()["value"]:
     bu = (u.get("businessunitid") or {}).get("name", "")
-    print(u["fullname"], u["domainname"], u.get("address1_composite"), "|", bu)</pre>
+    print(u["fullname"], u["domainname"], u.get("address1_composite"), "|", bu)</code></pre>
     </div>
     <p>Then I turned the lens on my own token — a self-lookup by the <code>UserId</code> from WhoAmI,
     expanding the role association to see exactly what I hold:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers(a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d)
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/systemusers(a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d)
       ?$select=fullname,applicationid
       &amp;$expand=systemuserroles_association($select=name)
 
@@ -294,10 +297,10 @@ for u in r.json()["value"]:
     { "name": "Salesperson (custom)" },
     { "name": "System Administrator" }
   ]
-}</pre>
+}</code></pre>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre>me = session.get(f"{ORG}/api/data/v9.2/WhoAmI").json()
+      <pre><code class="language-python">me = session.get(f"{ORG}/api/data/v9.2/WhoAmI").json()
 
 r = session.get(f"{ORG}/api/data/v9.2/systemusers({me['UserId']})", params={
     "$select": "fullname,applicationid",
@@ -305,7 +308,7 @@ r = session.get(f"{ORG}/api/data/v9.2/systemusers({me['UserId']})", params={
 })
 u = r.json()
 roles = [x["name"] for x in u["systemuserroles_association"]]
-print(u["fullname"], "| app user:", bool(u.get("applicationid")), "| roles:", roles)</pre>
+print(u["fullname"], "| app user:", bool(u.get("applicationid")), "| roles:", roles)</code></pre>
     </div>
     <p>That last line is the tell: my token isn't a person at all — it's an <strong>application
     user</strong> (note the <code>applicationid</code>) carrying <strong>System Administrator</strong>.
@@ -315,16 +318,16 @@ print(u["fullname"], "| app user:", bool(u.get("applicationid")), "| roles:", ro
     <p>The final move is to enumerate privilege directly: who holds the powerful roles, and which of
     those accounts are non-human. OData lets you filter <code>systemusers</code> by role association,
     so one request lists every System Administrator in the org:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
       ?$select=fullname,domainname,applicationid,isdisabled
       &amp;$filter=systemuserroles_association/any(r:r/name eq 'System Administrator')
-Authorization: Bearer &lt;token&gt;</pre>
+Authorization: Bearer &lt;token&gt;</code></pre>
     <p>And the accounts nobody watches — application users (service principals) — fall out of a single
     filter on <code>applicationid</code>:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid&amp;$filter=applicationid ne null</pre>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid&amp;$filter=applicationid ne null</code></pre>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre># Every System Administrator — flag the non-human ones
+      <pre><code class="language-python"># Every System Administrator — flag the non-human ones
 r = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
     "$select": "fullname,domainname,applicationid,isdisabled",
     "$filter": "systemuserroles_association/any(r:r/name eq 'System Administrator')",
@@ -338,7 +341,7 @@ apps = session.get(f"{ORG}/api/data/v9.2/systemusers", params={
     "$select": "fullname,applicationid",
     "$filter": "applicationid ne null",
 }).json()["value"]
-print(f"{len(apps)} application users found")</pre>
+print(f"{len(apps)} application users found")</code></pre>
     </div>
     <p>The results were the finding. Alongside a healthy handful of interactive admins, the
     integration app from the user-recon step held <strong>System Administrator</strong> — and its
@@ -356,7 +359,7 @@ print(f"{len(apps)} application users found")</pre>
     publisher prefix like <code>cr123_</code>, <code>contoso_</code>, or <code>new_</code>. The
     metadata service hands the whole list over, filtered to just the custom entities so you skip the
     hundreds of system tables:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/EntityDefinitions
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/EntityDefinitions
       ?$select=LogicalName,EntitySetName,DisplayName
       &amp;$filter=IsCustomEntity eq true
 Authorization: Bearer &lt;token&gt;
@@ -367,15 +370,15 @@ Authorization: Bearer &lt;token&gt;
     { "LogicalName": "cr123_contract",  "EntitySetName": "cr123_contracts",  "DisplayName": { ... "Contract" } },
     { "LogicalName": "contoso_payroll", "EntitySetName": "contoso_payrolls", "DisplayName": { ... "Payroll" } }
   ]
-}</pre>
+}</code></pre>
     <p>The names alone map the crown jewels. Each <code>EntitySetName</code> is a live OData
     collection, so reading one is the same call as any built-in table — and because these tables are
     often stood up quickly, they rarely have field-level security on the columns that need it most:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/cr123_claims?$select=cr123_claimnumber,cr123_nationalid,cr123_claimantemail&amp;$top=50
-Authorization: Bearer &lt;token&gt;</pre>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/cr123_claims?$select=cr123_claimnumber,cr123_nationalid,cr123_claimantemail&amp;$top=50
+Authorization: Bearer &lt;token&gt;</code></pre>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre># 1) List every custom table
+      <pre><code class="language-python"># 1) List every custom table
 defs = session.get(f"{ORG}/api/data/v9.2/EntityDefinitions", params={
     "$select": "LogicalName,EntitySetName",
     "$filter": "IsCustomEntity eq true",
@@ -389,7 +392,7 @@ r = session.get(f"{ORG}/api/data/v9.2/cr123_claims", params={
     "$top":    50,
 })
 for row in r.json()["value"]:
-    print(row.get("cr123_claimnumber"), row.get("cr123_nationalid"))</pre>
+    print(row.get("cr123_claimnumber"), row.get("cr123_nationalid"))</code></pre>
     </div>
     <p>Here the <code>cr123_claim</code> table held a <code>cr123_nationalid</code> column in
     cleartext, with no field security profile in the way — exactly the kind of data you never want to
@@ -444,6 +447,11 @@ for row in r.json()["value"]:
       }
       window.addEventListener('scroll', onScroll); onScroll();
     })();
+  </script>
+
+  <!-- ===== Syntax highlighting ===== -->
+  <script>
+    if (window.hljs) { hljs.highlightAll(); }
   </script>
 
 </body>
