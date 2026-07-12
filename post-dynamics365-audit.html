@@ -447,29 +447,36 @@ for n in notes:
 
     <h2 class="ui header"><i class="paperclip icon"></i> Activity Attachments</h2>
     <p>Files attached to activities land in the <code>activityfileattachment</code> table — the modern
-    File-column store. Unlike Notes, the bytes aren't inline base64; each row points at a
-    <code>fileattachment</code> record, and you pull the content from that record's file-download
-    endpoint. So it's a two-hop grab: enumerate the links, then stream each file:</p>
+    File-column store. Enumerate the rows to get each attachment's <code>filename</code> and
+    <code>mimetype</code>, then pull the bytes straight off the row's <code>filecontent</code>
+    navigation property — no second hop needed:</p>
     <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/activityfileattachments
-      ?$select=activityfileattachmentid,_objectid_value,_fileattachmentid_value
-Authorization: Bearer &lt;token&gt;</code></pre>
+      ?$select=activityfileattachmentid,filename,mimetype,_objectid_value
+Authorization: Bearer &lt;token&gt;
+
+# then, per row, the raw file content:
+GET https://org.crm.dynamics.com/api/data/v9.2/activityfileattachments(&lt;id&gt;)/filecontent</code></pre>
     <div class="ui segment">
       <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
-      <pre><code class="language-python">import pathlib
+      <pre><code class="language-python">import base64, pathlib
 
-links = session.get(f"{ORG}/api/data/v9.2/activityfileattachments", params={
-    "$select": "activityfileattachmentid,_fileattachmentid_value",
+atts = session.get(f"{ORG}/api/data/v9.2/activityfileattachments", params={
+    "$select": "activityfileattachmentid,filename,mimetype",
     "$top":    5000,
 }).json()["value"]
 
-for a in links:
-    fid  = a["_fileattachmentid_value"]
-    meta = session.get(f"{ORG}/api/data/v9.2/fileattachments({fid})",
-                       params={"$select": "filename,mimetype"}).json()
-    data = session.get(f"{ORG}/api/data/v9.2/fileattachments({fid})/file/$value").content
-    pathlib.Path(meta["filename"]).write_bytes(data)
-    print("saved", meta["filename"], meta["mimetype"])</code></pre>
+for a in atts:
+    aid  = a["activityfileattachmentid"]
+    blob = session.get(f"{ORG}/api/data/v9.2/activityfileattachments({aid})/filecontent").text
+    pathlib.Path(a["filename"]).write_bytes(base64.b64decode(blob))
+    print("saved", a["filename"], a["mimetype"])</code></pre>
     </div>
+    <figure>
+      <img src="images/dynamics365/activityfileattachment-filecontent.png" alt="Base64 file content returned by the activityfileattachments filecontent endpoint">
+      <figcaption>The <code>/filecontent</code> endpoint on a single
+        <code>activityfileattachment</code> returning the attached file as base64 — one GET, straight
+        to the bytes.</figcaption>
+    </figure>
 
     <h2 class="ui header"><i class="cogs icon"></i> Workflows &amp; Processes</h2>
     <p>The <code>workflow</code> table stores every automation in the org — classic workflows,
