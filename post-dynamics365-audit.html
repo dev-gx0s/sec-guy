@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditing Dynamics 365 &amp; Dataverse for Data Exposure | gx0s</title>
+  <meta name="description" content="A security assessment of a Dynamics 365 / Dataverse environment: finding where CRM data leaks — anonymous Power Pages OData, over-broad security roles, missing field-level security, and over-privileged application users.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+
+  <style>
+    body { background: #f4f6f8; }
+    .article.container { margin: 6em auto 4em; width: 90vw !important; max-width: 1600px !important; }
+    .article.container p { font-size: 1.1em; line-height: 1.7; text-align: justify; }
+    pre { background:#1b1c1d; color:#9cffb3; padding:1em; border-radius:6px; overflow-x:auto; font-size:0.85em; white-space:pre-wrap; word-break:break-all; }
+    figure { margin: 1.5em 0; }
+    figure img { width:100%; border:1px solid #d4d4d5; border-radius:6px; }
+    figure.narrow { max-width:620px; margin-left:auto; margin-right:auto; }
+    figcaption { color:#888; font-size:0.9em; margin-top:0.5em; text-align:center; }
+    code { background:#eee; padding:0.1em 0.4em; border-radius:3px; }
+    .footer.segment { padding: 0.5em 0; background: #fff; color: rgba(0,0,0,0.87); font-size: 0.9em; }
+    .footer.segment a { color: #4183c4; }
+    .ui.inverted.menu a.item:not(.header):hover { background: #21ba45; color: #fff; }
+    /* Kill-chain / audit-flow timeline */
+    .killchain { display:flex; flex-wrap:wrap; justify-content:center; margin:1.5em 0 0.5em; }
+    .kc-stage { flex:1 1 150px; max-width:230px; text-align:center; padding:0.6em 0.4em; position:relative; }
+    .kc-stage .kc-icon { display:inline-flex; align-items:center; justify-content:center; width:60px; height:60px; border-radius:50%; background:#3b7bd5; color:#fff; font-size:1.5em; margin-bottom:.5em; }
+    .kc-stage .kc-icon i { margin:0; }
+    .kc-title { font-weight:700; color:#1b1c1d; }
+    .kc-sub { font-size:.82em; color:#777; word-break:break-word; }
+    .kc-stage:not(:last-child)::after { content:"\2192"; position:absolute; top:24px; right:-7px; color:#bbb; font-size:1.5em; }
+    @media (max-width:640px){ .kc-stage:not(:last-child)::after{ display:none; } }
+    .kc-caption { text-align:center; color:#888; font-size:0.9em; margin-bottom:1.5em; }
+    /* Left contents menu */
+    .toc { display:none; }
+    .toc .toc-title { font-weight:700; text-transform:uppercase; font-size:0.75em; letter-spacing:.05em; color:#999; padding:0 0 .5em .6em; }
+    .toc a { display:block; padding:.32em .6em; color:#555; border-left:2px solid transparent; text-decoration:none; font-size:.88em; line-height:1.3; }
+    .toc a:hover { color:#21ba45; background:#eef1f3; }
+    .toc a.active { color:#21ba45; border-left-color:#21ba45; font-weight:600; }
+    .article.container h2.ui.header { scroll-margin-top: 72px; }
+    @media (min-width:1200px){
+      .toc { display:block; position:fixed; top:4.8em; left:14px; width:225px; max-height:82vh; overflow-y:auto; padding:.4em .2em; }
+      .article.container { margin: 6em 0 4em 265px !important; width:auto !important; max-width:1150px !important; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== Navigation ===== -->
+  <div class="ui fixed inverted menu">
+    <div class="ui container">
+      <a href="index.html" class="header item">
+        <i class="shield alternate icon"></i>
+        gx0s
+      </a>
+      <a href="index.html" class="item">Home</a>
+      <a href="index.html#profile" class="item">About</a>
+    </div>
+  </div>
+
+  <!-- ===== Article ===== -->
+  <nav class="toc" id="toc"><div class="toc-title">On this page</div></nav>
+
+  <div class="ui article container">
+
+    <a href="index.html" class="ui basic button">
+      <i class="left arrow icon"></i> Back to all cases
+    </a>
+
+    <div class="ui hidden divider"></div>
+
+    <div class="ui label blue"><i class="database icon"></i> Cloud Audit</div>
+    <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2026-06-24 &middot; 9 min read</span>
+
+    <h1 class="ui header" style="margin-top:0.5em;">Auditing Dynamics 365 &amp; Dataverse for Data Exposure</h1>
+
+    <p><em>Summary: A security assessment of a customer's <strong>Dynamics 365</strong> environment.
+    The brief was simple: find where the CRM's crown-jewel data — contacts, cases, and the PII
+    attached to them — could leak. What surfaced was a familiar story. A <strong>Power Pages</strong>
+    site served Dataverse tables over <strong>anonymous OData</strong>, several security roles handed
+    out organization-wide read on sensitive tables, PII columns had no field-level security, and an
+    application user was sitting on <em>System Administrator</em>. None of it was a "hack" — it was
+    configuration, and configuration is exactly what an attacker enumerates first.</em></p>
+
+    <div class="killchain">
+      <div class="kc-stage"><span class="kc-icon"><i class="search icon"></i></span><div class="kc-title">Recon</div><div class="kc-sub">Find the org &amp; portal endpoints</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="sitemap icon"></i></span><div class="kc-title">Enumerate</div><div class="kc-sub">$metadata → table list</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="unlock icon"></i></span><div class="kc-title">Anonymous access</div><div class="kc-sub">Table-permission gaps</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="address book icon"></i></span><div class="kc-title">PII exposure</div><div class="kc-sub">Contacts, cases, email, phone</div></div>
+    </div>
+    <div class="kc-caption">The exposure path — from public endpoint to bulk PII, no exploit required.</div>
+
+    <h2 class="ui header"><i class="bullseye icon"></i> Why Dynamics 365 is a juicy target</h2>
+    <p>Dynamics 365 sits on top of <strong>Dataverse</strong> (the platform formerly known as the
+    Common Data Service / CDS). Every "app" — Sales, Customer Service, Field Service, a bespoke
+    model-driven app — is really just a set of views over Dataverse <em>tables</em>. Those tables
+    hold the things attackers and regulators care about most: <code>contact</code> (names, emails,
+    phone numbers, addresses), <code>incident</code> (support cases, often full of customer detail),
+    <code>account</code>, and whatever custom tables the business bolted on to hold contracts,
+    claims, or worse — national IDs and payment references.</p>
+    <p>The security model is genuinely capable: role-based access, record ownership, business units,
+    field-level security, and hierarchical sharing. The problem is that <strong>every one of those
+    controls is opt-in and easy to loosen</strong>, and there are several front doors — the classic
+    web client, the Dataverse Web API, Power Pages/Portals, Power Automate, and application users.
+    An audit has to walk each door and rattle the handle.</p>
+
+    <h2 class="ui header"><i class="map signs icon"></i> Mapping the attack surface</h2>
+    <p>Before touching anything, I laid out the surfaces where Dataverse data actually leaves the
+    building:</p>
+    <table class="ui celled striped table">
+      <thead><tr><th>Surface</th><th>Endpoint / mechanism</th><th>Who can reach it</th></tr></thead>
+      <tbody>
+        <tr><td>Dataverse Web API</td><td><code>https://&lt;org&gt;.crm.dynamics.com/api/data/v9.2/</code></td><td>Any authenticated user / app with a role</td></tr>
+        <tr><td>Power Pages / Portal Web API</td><td><code>https://&lt;portal&gt;.powerappsportals.com/_api/&lt;table&gt;</code></td><td>Depends on web roles &mdash; <strong>including anonymous</strong></td></tr>
+        <tr><td>Portal list / OData feeds</td><td>Entity lists &amp; <code>_odata</code> feeds rendered in pages</td><td>Whoever can load the page</td></tr>
+        <tr><td>Application users</td><td>Service principals with assigned security roles</td><td>Anything holding the client secret / cert</td></tr>
+        <tr><td>Power Automate / connectors</td><td>Dataverse connector in flows</td><td>Flow owners &amp; anyone who can trigger them</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="users icon"></i> Test 1 — Is the environment fenced off at all?</h2>
+    <p>The first and cheapest question: does the environment have a <strong>security group</strong>?
+    In the Power Platform admin center, an environment with <em>no</em> security group assigned is
+    reachable by <strong>every licensed user in the tenant</strong> — not just the team that owns the
+    app. On a large tenant that can mean thousands of accounts, most of whom have no business being
+    anywhere near the CRM data.</p>
+    <p>Here it was unset. Combined with a couple of broad security roles (next section), that meant
+    the blast radius of any single phished employee was the entire customer database.</p>
+
+    <h2 class="ui header"><i class="unlock alternate icon"></i> Test 2 — Power Pages anonymous OData (the big one)</h2>
+    <p>This is the finding that keeps showing up across the industry, and it was present here too.
+    Power Pages exposes Dataverse through a portal Web API. Access is gated by three things that all
+    have to line up: <strong>site settings</strong> that enable the Web API for a table, a
+    <strong>table permission</strong>, and a <strong>web role</strong> the permission is granted to.
+    The trap is the built-in <em>Anonymous Users</em> web role — grant a table permission to it (or
+    to the "Authenticated Users" role while self-registration is open) and you have just published
+    Dataverse to the internet.</p>
+    <p>Enumeration starts with the metadata document, which happily lists every entity set the API
+    knows about — no auth required if the Web API is on:</p>
+    <pre>GET https://portal.example.com/_api/$metadata
+# → EntitySet Name="contacts" ... "incidents" ... "accounts" ...</pre>
+    <p>From there it is a single OData query to pull records. Standard OData operators
+    (<code>$select</code>, <code>$filter</code>, <code>$top</code>, <code>$orderby</code>) all work,
+    so an attacker doesn't scrape a UI — they page through the table:</p>
+    <pre>GET https://portal.example.com/_api/contacts?$select=fullname,emailaddress1,telephone1,address1_city&amp;$top=5000
+
+{
+  "value": [
+    { "fullname": "Jane R.",  "emailaddress1": "jane.r@example.com",  "telephone1": "+1-555-0142", "address1_city": "Austin" },
+    { "fullname": "Omar K.",  "emailaddress1": "omar.k@example.com",  "telephone1": "+1-555-0198", "address1_city": "Denver" },
+    ... 4,998 more ...
+  ]
+}</pre>
+    <p>The portal's own JavaScript needs a request-verification token for writes, but
+    <strong>reads over the Web API returned data to an unauthenticated client</strong>. The fix is
+    not clever: the table permissions granted <em>Global</em> scope read to a role that anonymous
+    users inherited. Scope should almost never be Global on a portal — it should be
+    <em>Contact</em>, <em>Account</em>, or <em>Self</em> so a signed-in user sees only their own
+    related records.</p>
+    <figure class="narrow">
+      <div style="background:#fff;border:1px solid #d4d4d5;border-radius:6px;padding:1.1em 1.3em;">
+        <div style="font-weight:700;color:#c00;margin-bottom:.4em;"><i class="exclamation triangle icon"></i> Table Permission — <code>contacts</code></div>
+        <div style="line-height:1.9;">
+          Access&nbsp;type: <strong>Global</strong> &nbsp;·&nbsp; Privileges: <strong>Read</strong><br>
+          Granted&nbsp;to&nbsp;web&nbsp;role: <strong style="color:#c00;">Anonymous Users</strong>
+        </div>
+      </div>
+      <figcaption>The misconfiguration in one line: a <em>Global</em>-scope read permission on
+        <code>contacts</code>, inherited by the <strong>Anonymous Users</strong> web role.</figcaption>
+    </figure>
+
+    <h2 class="ui header"><i class="key icon"></i> Test 3 — Over-broad security roles &amp; the Web API</h2>
+    <p>Away from the portal, the authenticated Dataverse Web API is only as safe as the security
+    roles behind it. I exported the roles and looked specifically at the read privilege depth on
+    sensitive tables. Dataverse depths run <em>User → Business Unit → Parent-Child BU →
+    Organization</em>. A green-filled "Organization" circle on <code>contact</code> read means every
+    holder of that role can read <strong>every contact in the company</strong>.</p>
+    <p>Any user with such a role can dump the table with the same OData a portal uses, just
+    authenticated:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/contacts?$select=fullname,emailaddress1,telephone1&amp;$top=5000
+Authorization: Bearer &lt;user-or-app-token&gt;</pre>
+    <p>Two custom roles cloned from <em>Salesperson</em> had quietly been bumped to Organization-level
+    read across <code>contact</code>, <code>incident</code>, and a custom <code>claim</code> table.
+    Nobody remembered doing it — it had been copied forward across environments for years. That is
+    the normal way privilege sprawl happens: nobody grants "read everything," they clone a role and
+    nudge one circle.</p>
+
+    <h2 class="ui header"><i class="eye slash icon"></i> Test 4 — Field-level security on the PII that matters</h2>
+    <p>Role privileges are per-table; <strong>field-level security</strong> is how you protect
+    individual columns like a national ID or a bank reference regardless of who can see the row.
+    You mark a column as <em>secured</em>, then a <strong>Field Security Profile</strong> decides who
+    can Read / Update / Create that column.</p>
+    <p>The custom <code>claim</code> table had a <code>national_id</code> column holding exactly the
+    kind of data you never want to explain to a regulator — and it was <strong>not secured</strong>.
+    That meant it flowed through both the authenticated Web API and (because of Test 2) the portal
+    feed, in cleartext:</p>
+    <pre>GET .../claims?$select=claim_number,national_id,claimant_email
+# national_id returned in full — no field security profile in the way</pre>
+    <p>Securing the column and scoping a profile to just the claims-handling team removed it from
+    every response for everyone else, without changing a single security role.</p>
+
+    <h2 class="ui header"><i class="robot icon"></i> Test 5 — Application users &amp; service principals</h2>
+    <p>Application users (service principals registered in Dataverse) are the accounts nobody watches.
+    They authenticate with a client secret or certificate and carry whatever security role they were
+    given. I enumerated them and checked their roles:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid,isdisabled&amp;$filter=applicationid ne null</pre>
+    <p>One integration app — wired into a Power Automate flow — held <strong>System Administrator</strong>.
+    Its client secret was pasted into the flow's connection and had <strong>no expiry</strong>. Anyone
+    who could read that flow definition, or who lifted the secret from source control, would inherit
+    god-mode over the whole environment. Application users should get a <em>narrow custom role</em>
+    scoped to the exact tables they integrate, secrets should be short-lived and stored in Key Vault,
+    and certificate auth is preferable to a shared secret.</p>
+
+    <h2 class="ui header"><i class="clipboard list icon"></i> Findings summary</h2>
+    <table class="ui celled striped table">
+      <thead><tr><th>#</th><th>Finding</th><th>Severity</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Power Pages: <code>contacts</code> readable over anonymous OData (Global-scope table permission on the Anonymous web role)</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
+        <tr><td>2</td><td>Custom <code>claim.national_id</code> PII exposed with no field-level security</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
+        <tr><td>3</td><td>Application user with System Administrator + non-expiring client secret in a flow</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
+        <tr><td>4</td><td>Two roles with Organization-level read on <code>contact</code> / <code>incident</code> / <code>claim</code></td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
+        <tr><td>5</td><td>Environment has no security group — reachable by all licensed tenant users</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
+        <tr><td>6</td><td>Dataverse auditing disabled on sensitive tables — no record of bulk reads</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="wrench icon"></i> Remediation &amp; hardening checklist</h2>
+    <table class="ui teal celled striped table">
+      <thead><tr><th>Area</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Portal / Power Pages</td><td>Review every table permission; remove Global scope; never grant read to the <em>Anonymous</em> role unless the data is truly public. Turn off the Web API for tables that don't need it.</td></tr>
+        <tr><td>Environment fencing</td><td>Assign a security group to every non-trivial environment so only intended users can access it.</td></tr>
+        <tr><td>Security roles</td><td>Least privilege: keep read depth at User/BU for sensitive tables. Audit cloned roles for drift; avoid Organization scope on PII tables.</td></tr>
+        <tr><td>Field-level security</td><td>Secure PII/financial columns (national IDs, payment refs) and scope Field Security Profiles to the teams that genuinely need them.</td></tr>
+        <tr><td>Application users</td><td>Narrow custom roles per integration; short-lived secrets in Key Vault or certificate auth; disable unused app users.</td></tr>
+        <tr><td>Monitoring</td><td>Enable Dataverse auditing on sensitive tables; surface bulk <code>RetrieveMultiple</code> and export activity via Purview / the audit log; alert on anonymous portal volume spikes.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="crosshairs icon"></i> MITRE ATT&amp;CK mapping</h2>
+    <table class="ui blue celled striped table">
+      <thead><tr><th>Tactic</th><th>Technique</th></tr></thead>
+      <tbody>
+        <tr><td>Discovery</td><td>T1526 — Cloud Service Discovery (enumerating the Dataverse / portal Web API and <code>$metadata</code>)</td></tr>
+        <tr><td>Discovery</td><td>T1087.004 — Account Discovery: Cloud Account (systemusers / application users)</td></tr>
+        <tr><td>Collection</td><td>T1213 — Data from Information Repositories (Dataverse tables: contacts, cases, claims)</td></tr>
+        <tr><td>Collection / Exfiltration</td><td>T1530 — Data from Cloud Storage (bulk OData reads of PII)</td></tr>
+        <tr><td>Defense Evasion / Persistence</td><td>T1078.004 — Valid Accounts: Cloud Accounts (over-privileged application user &amp; secret)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="ui header"><i class="lightbulb icon"></i> The takeaway</h2>
+    <p>Not one of these findings needed an exploit. Dynamics 365 gave the attacker everything through
+    the front door — a well-documented OData API and a security model that had been loosened one
+    reasonable-looking click at a time. Auditing it isn't about finding a bug; it's about walking
+    every door the platform opens and asking <em>who is actually standing on the other side</em>.
+    Do that on a schedule, because the config drifts back.</p>
+
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="ui vertical footer segment">
+    <div class="ui center aligned container">
+      <p>&copy; 2026 gx0s &middot; <a href="index.html">Home</a></p>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      var toc = document.getElementById('toc');
+      if(!toc) return;
+      var heads = document.querySelectorAll('.article.container h2.ui.header');
+      var links = [];
+      heads.forEach(function(h,i){
+        if(!h.id){ h.id = 'sec-'+i; }
+        var a = document.createElement('a');
+        a.href = '#'+h.id;
+        a.textContent = h.textContent.trim();
+        toc.appendChild(a);
+        links.push(a);
+      });
+      function onScroll(){
+        var pos = window.pageYOffset + 100, cur = null;
+        heads.forEach(function(h){ if(h.offsetTop <= pos) cur = h.id; });
+        links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#'+cur); });
+      }
+      window.addEventListener('scroll', onScroll); onScroll();
+    })();
+  </script>
+
+</body>
+
+</html>
