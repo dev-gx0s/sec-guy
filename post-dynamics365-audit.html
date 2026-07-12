@@ -123,6 +123,43 @@
       </tbody>
     </table>
 
+    <h2 class="ui header"><i class="sign in alternate icon"></i> Authentication</h2>
+    <p>Everything that follows needs a <strong>bearer token</strong> for the Dataverse org. The
+    Web API is protected by Entra ID (Azure AD), and the quickest way to get an interactive token as
+    yourself is the Azure CLI — <code>az login</code> opens a browser sign-in against the tenant:</p>
+    <pre># Opens a browser to sign in to Entra ID (Azure AD)
+az login
+
+# Sanity check: can this identity mint a token for the Dataverse org?
+az account get-access-token --resource https://org.crm.dynamics.com</pre>
+    <p>From there, a few lines of Python reuse that CLI session, request a token scoped to the org
+    (<code>&lt;org&gt;/.default</code>), and set up a <code>requests</code> session with the OData
+    headers the Web API expects. Every call in the rest of this post rides on this
+    <code>session</code>:</p>
+    <pre>import requests
+from azure.identity import AzureCliCredential   # pip install azure-identity requests
+
+ORG = "https://org.crm.dynamics.com"
+
+# Reuse the `az login` session and get a token scoped to the Dataverse org
+token = AzureCliCredential().get_token(f"{ORG}/.default").token
+
+session = requests.Session()
+session.headers.update({
+    "Authorization":    f"Bearer {token}",
+    "Accept":           "application/json",
+    "OData-MaxVersion": "4.0",
+    "OData-Version":    "4.0",
+})
+
+# Smoke test — the very first recon call
+r = session.get(f"{ORG}/api/data/v9.2/WhoAmI")
+print(r.status_code, r.json())</pre>
+    <p>For an unattended assessment you'd swap <code>AzureCliCredential</code> for
+    <code>ClientSecretCredential</code> (an app registration's client ID + secret) or
+    <code>CertificateCredential</code> — the app just needs to be provisioned as an application user
+    in Dataverse. With a live <code>session</code> in hand, the recon begins.</p>
+
     <h2 class="ui header"><i class="user icon"></i> WhoAmI</h2>
     <p>Every Dataverse assessment starts here. Before enumerating anything you need to know which
     identity your token represents, and which organization and business unit it lands in. The
