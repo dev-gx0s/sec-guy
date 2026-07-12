@@ -471,7 +471,7 @@ for a in atts:
     pathlib.Path(a["filename"]).write_bytes(base64.b64decode(blob))
     print("saved", a["filename"], a["mimetype"])</code></pre>
     </div>
-    <figure>
+    <figure class="narrow" style="max-width:460px;">
       <img src="images/dynamics365/activityfileattachment-filecontent.png" alt="Base64 file content returned by the activityfileattachments filecontent endpoint">
       <figcaption>The <code>/filecontent</code> endpoint on a single
         <code>activityfileattachment</code> returning the attached file as base64 — one GET, straight
