@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Auditing Dynamics 365 &amp; Dataverse for Data Exposure | gx0s</title>
-  <meta name="description" content="A security assessment of a Dynamics 365 / Dataverse environment: finding where CRM data leaks — anonymous Power Pages OData, over-broad security roles, missing field-level security, and over-privileged application users.">
+  <meta name="description" content="An authenticated Dataverse Web API assessment of a Dynamics 365 environment — from WhoAmI through business-unit, user, and admin reconnaissance — mapping how much a single token can reach.">
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
@@ -75,157 +75,155 @@
     <div class="ui hidden divider"></div>
 
     <div class="ui label blue"><i class="database icon"></i> Cloud Audit</div>
-    <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2026-06-24 &middot; 9 min read</span>
+    <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2026-06-24 &middot; 8 min read</span>
 
     <h1 class="ui header" style="margin-top:0.5em;">Auditing Dynamics 365 &amp; Dataverse for Data Exposure</h1>
 
-    <p><em>Summary: A security assessment of a customer's <strong>Dynamics 365</strong> environment.
-    The brief was simple: find where the CRM's crown-jewel data — contacts, cases, and the PII
-    attached to them — could leak. What surfaced was a familiar story. A <strong>Power Pages</strong>
-    site served Dataverse tables over <strong>anonymous OData</strong>, several security roles handed
-    out organization-wide read on sensitive tables, PII columns had no field-level security, and an
-    application user was sitting on <em>System Administrator</em>. None of it was a "hack" — it was
-    configuration, and configuration is exactly what an attacker enumerates first.</em></p>
+    <p><em>Summary: A security assessment of a customer's <strong>Dynamics 365</strong> environment,
+    driven entirely through the <strong>Dataverse Web API</strong>. Given one ordinary authenticated
+    token, how much of the organization can it map? Everything below runs against a single endpoint,
+    <code>https://&lt;org&gt;.crm.dynamics.com/api/data/v9.2/</code>, and follows the reconnaissance
+    an attacker runs the moment they land: <strong>WhoAmI</strong> to fix the identity,
+    <strong>business units</strong> to learn the org's shape, <strong>user recon</strong> to build a
+    directory, and <strong>admin recon</strong> to find the accounts worth stealing. No exploit —
+    just OData and a security model that had drifted.</em></p>
 
     <div class="killchain">
-      <div class="kc-stage"><span class="kc-icon"><i class="search icon"></i></span><div class="kc-title">Recon</div><div class="kc-sub">Find the org &amp; portal endpoints</div></div>
-      <div class="kc-stage"><span class="kc-icon"><i class="sitemap icon"></i></span><div class="kc-title">Enumerate</div><div class="kc-sub">$metadata → table list</div></div>
-      <div class="kc-stage"><span class="kc-icon"><i class="unlock icon"></i></span><div class="kc-title">Anonymous access</div><div class="kc-sub">Table-permission gaps</div></div>
-      <div class="kc-stage"><span class="kc-icon"><i class="address book icon"></i></span><div class="kc-title">PII exposure</div><div class="kc-sub">Contacts, cases, email, phone</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="user icon"></i></span><div class="kc-title">WhoAmI</div><div class="kc-sub">Fix the identity context</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="sitemap icon"></i></span><div class="kc-title">Business Units</div><div class="kc-sub">Map the org hierarchy</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="address book icon"></i></span><div class="kc-title">User Recon</div><div class="kc-sub">Enumerate every systemuser</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="user secret icon"></i></span><div class="kc-title">Admin Recon</div><div class="kc-sub">Find the privileged accounts</div></div>
     </div>
-    <div class="kc-caption">The exposure path — from public endpoint to bulk PII, no exploit required.</div>
+    <div class="kc-caption">The recon path — from one token to a full identity &amp; privilege map.</div>
 
     <h2 class="ui header"><i class="bullseye icon"></i> Why Dynamics 365 is a juicy target</h2>
     <p>Dynamics 365 sits on top of <strong>Dataverse</strong> (the platform formerly known as the
-    Common Data Service / CDS). Every "app" — Sales, Customer Service, Field Service, a bespoke
-    model-driven app — is really just a set of views over Dataverse <em>tables</em>. Those tables
-    hold the things attackers and regulators care about most: <code>contact</code> (names, emails,
-    phone numbers, addresses), <code>incident</code> (support cases, often full of customer detail),
-    <code>account</code>, and whatever custom tables the business bolted on to hold contracts,
-    claims, or worse — national IDs and payment references.</p>
-    <p>The security model is genuinely capable: role-based access, record ownership, business units,
-    field-level security, and hierarchical sharing. The problem is that <strong>every one of those
-    controls is opt-in and easy to loosen</strong>, and there are several front doors — the classic
-    web client, the Dataverse Web API, Power Pages/Portals, Power Automate, and application users.
-    An audit has to walk each door and rattle the handle.</p>
+    Common Data Service). Every "app" — Sales, Customer Service, a bespoke model-driven app — is
+    really views over Dataverse <em>tables</em>, and the platform's own plumbing is stored in tables
+    too: <code>systemuser</code>, <code>businessunit</code>, <code>role</code>. That means once you
+    hold a token, the <strong>OData v4 Web API</strong> under
+    <code>/api/data/v9.2/</code> lets you read not just the business data but the entire identity and
+    privilege model — who exists, how the org is carved up, and who holds the keys.</p>
+    <p>The security model is capable — role-based access, ownership, business units, field-level
+    security — but every control is opt-in and easy to loosen. Reconnaissance is how an attacker
+    finds the loose one. This engagement walks that recon exactly as an adversary would, then reports
+    what it exposed.</p>
 
-    <h2 class="ui header"><i class="map signs icon"></i> Mapping the attack surface</h2>
-    <p>Before touching anything, I laid out the surfaces where Dataverse data actually leaves the
-    building:</p>
+    <h2 class="ui header"><i class="map signs icon"></i> The one endpoint that matters</h2>
+    <p>The whole assessment runs against a single host and its Web API. These are the tables and
+    functions the recon touches:</p>
     <table class="ui celled striped table">
-      <thead><tr><th>Surface</th><th>Endpoint / mechanism</th><th>Who can reach it</th></tr></thead>
+      <thead><tr><th>Purpose</th><th>Endpoint</th><th>Reveals</th></tr></thead>
       <tbody>
-        <tr><td>Dataverse Web API</td><td><code>https://&lt;org&gt;.crm.dynamics.com/api/data/v9.2/</code></td><td>Any authenticated user / app with a role</td></tr>
-        <tr><td>Power Pages / Portal Web API</td><td><code>https://&lt;portal&gt;.powerappsportals.com/_api/&lt;table&gt;</code></td><td>Depends on web roles &mdash; <strong>including anonymous</strong></td></tr>
-        <tr><td>Portal list / OData feeds</td><td>Entity lists &amp; <code>_odata</code> feeds rendered in pages</td><td>Whoever can load the page</td></tr>
-        <tr><td>Application users</td><td>Service principals with assigned security roles</td><td>Anything holding the client secret / cert</td></tr>
-        <tr><td>Power Automate / connectors</td><td>Dataverse connector in flows</td><td>Flow owners &amp; anyone who can trigger them</td></tr>
+        <tr><td>Identity</td><td><code>/api/data/v9.2/WhoAmI</code></td><td>UserId, BusinessUnitId, OrganizationId</td></tr>
+        <tr><td>Org structure</td><td><code>/api/data/v9.2/businessunits</code></td><td>Business-unit hierarchy &amp; ownership boundaries</td></tr>
+        <tr><td>Directory</td><td><code>/api/data/v9.2/systemusers</code></td><td>Every user &amp; application user, emails, status</td></tr>
+        <tr><td>Privilege</td><td><code>/api/data/v9.2/roles</code> + role associations</td><td>Who holds which security role</td></tr>
       </tbody>
     </table>
 
-    <h2 class="ui header"><i class="users icon"></i> Test 1 — Is the environment fenced off at all?</h2>
-    <p>The first and cheapest question: does the environment have a <strong>security group</strong>?
-    In the Power Platform admin center, an environment with <em>no</em> security group assigned is
-    reachable by <strong>every licensed user in the tenant</strong> — not just the team that owns the
-    app. On a large tenant that can mean thousands of accounts, most of whom have no business being
-    anywhere near the CRM data.</p>
-    <p>Here it was unset. Combined with a couple of broad security roles (next section), that meant
-    the blast radius of any single phished employee was the entire customer database.</p>
+    <h2 class="ui header"><i class="user icon"></i> WhoAmI</h2>
+    <p>Every Dataverse assessment starts here. Before enumerating anything you need to know which
+    identity your token represents, and which organization and business unit it lands in. The
+    <code>WhoAmI</code> function answers all three in a single GET (it still needs a valid bearer
+    token — it just takes no parameters):</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/WhoAmI
+Authorization: Bearer &lt;token&gt;
 
-    <h2 class="ui header"><i class="unlock alternate icon"></i> Test 2 — Power Pages anonymous OData (the big one)</h2>
-    <p>This is the finding that keeps showing up across the industry, and it was present here too.
-    Power Pages exposes Dataverse through a portal Web API. Access is gated by three things that all
-    have to line up: <strong>site settings</strong> that enable the Web API for a table, a
-    <strong>table permission</strong>, and a <strong>web role</strong> the permission is granted to.
-    The trap is the built-in <em>Anonymous Users</em> web role — grant a table permission to it (or
-    to the "Authenticated Users" role while self-registration is open) and you have just published
-    Dataverse to the internet.</p>
-    <p>Enumeration starts with the metadata document, which happily lists every entity set the API
-    knows about — no auth required if the Web API is on:</p>
-    <pre>GET https://portal.example.com/_api/$metadata
-# → EntitySet Name="contacts" ... "incidents" ... "accounts" ...</pre>
-    <p>From there it is a single OData query to pull records. Standard OData operators
-    (<code>$select</code>, <code>$filter</code>, <code>$top</code>, <code>$orderby</code>) all work,
-    so an attacker doesn't scrape a UI — they page through the table:</p>
-    <pre>GET https://portal.example.com/_api/contacts?$select=fullname,emailaddress1,telephone1,address1_city&amp;$top=5000
+{
+  "@odata.context": ".../$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse",
+  "UserId":         "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "BusinessUnitId": "6f4d0a11-77aa-4b2c-9d3e-1122334455aa",
+  "OrganizationId": "9e8f7d6c-3b2a-4c1d-8e9f-aabbccddeeff"
+}</pre>
+    <p>Two GUIDs drive everything that follows. <code>UserId</code> is the primary key of my own row
+    in <code>systemuser</code> (user recon). <code>BusinessUnitId</code> is my row in
+    <code>businessunit</code> — the anchor for mapping the org.</p>
+
+    <h2 class="ui header"><i class="sitemap icon"></i> Business Units</h2>
+    <p>Business units are the ownership and scoping boundaries of Dataverse. A security role's read
+    depth of "Business Unit" means <em>this BU and below</em> — so before you can reason about what
+    any role actually reaches, you have to map the tree. The <code>businessunit</code> table hands it
+    over, parent pointers and all:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/businessunits?$select=name,isdisabled&amp;$expand=parentbusinessunitid($select=name)
+Authorization: Bearer &lt;token&gt;
 
 {
   "value": [
-    { "fullname": "Jane R.",  "emailaddress1": "jane.r@example.com",  "telephone1": "+1-555-0142", "address1_city": "Austin" },
-    { "fullname": "Omar K.",  "emailaddress1": "omar.k@example.com",  "telephone1": "+1-555-0198", "address1_city": "Denver" },
-    ... 4,998 more ...
+    { "name": "Contoso (root)",     "parentbusinessunitid": null },
+    { "name": "EMEA Sales",         "parentbusinessunitid": { "name": "Contoso (root)" } },
+    { "name": "EMEA Support",       "parentbusinessunitid": { "name": "Contoso (root)" } },
+    { "name": "Claims Processing",  "parentbusinessunitid": { "name": "EMEA Support" } }
   ]
 }</pre>
-    <p>The portal's own JavaScript needs a request-verification token for writes, but
-    <strong>reads over the Web API returned data to an unauthenticated client</strong>. The fix is
-    not clever: the table permissions granted <em>Global</em> scope read to a role that anonymous
-    users inherited. Scope should almost never be Global on a portal — it should be
-    <em>Contact</em>, <em>Account</em>, or <em>Self</em> so a signed-in user sees only their own
-    related records.</p>
-    <figure class="narrow">
-      <div style="background:#fff;border:1px solid #d4d4d5;border-radius:6px;padding:1.1em 1.3em;">
-        <div style="font-weight:700;color:#c00;margin-bottom:.4em;"><i class="exclamation triangle icon"></i> Table Permission — <code>contacts</code></div>
-        <div style="line-height:1.9;">
-          Access&nbsp;type: <strong>Global</strong> &nbsp;·&nbsp; Privileges: <strong>Read</strong><br>
-          Granted&nbsp;to&nbsp;web&nbsp;role: <strong style="color:#c00;">Anonymous Users</strong>
-        </div>
-      </div>
-      <figcaption>The misconfiguration in one line: a <em>Global</em>-scope read permission on
-        <code>contacts</code>, inherited by the <strong>Anonymous Users</strong> web role.</figcaption>
-    </figure>
+    <p>Cross-referencing my <code>BusinessUnitId</code> from WhoAmI against this tree tells me exactly
+    where my identity sits and, therefore, what a "Business Unit"-scoped role would and wouldn't
+    cover. It also names the sensitive units — <em>Claims Processing</em> was the one worth
+    remembering.</p>
 
-    <h2 class="ui header"><i class="key icon"></i> Test 3 — Over-broad security roles &amp; the Web API</h2>
-    <p>Away from the portal, the authenticated Dataverse Web API is only as safe as the security
-    roles behind it. I exported the roles and looked specifically at the read privilege depth on
-    sensitive tables. Dataverse depths run <em>User → Business Unit → Parent-Child BU →
-    Organization</em>. A green-filled "Organization" circle on <code>contact</code> read means every
-    holder of that role can read <strong>every contact in the company</strong>.</p>
-    <p>Any user with such a role can dump the table with the same OData a portal uses, just
-    authenticated:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/contacts?$select=fullname,emailaddress1,telephone1&amp;$top=5000
-Authorization: Bearer &lt;user-or-app-token&gt;</pre>
-    <p>Two custom roles cloned from <em>Salesperson</em> had quietly been bumped to Organization-level
-    read across <code>contact</code>, <code>incident</code>, and a custom <code>claim</code> table.
-    Nobody remembered doing it — it had been copied forward across environments for years. That is
-    the normal way privilege sprawl happens: nobody grants "read everything," they clone a role and
-    nudge one circle.</p>
+    <h2 class="ui header"><i class="address book icon"></i> User Reconnaissance</h2>
+    <p>The <code>systemuser</code> table is the org directory, and any role with even modest read on
+    it turns into a bulk export of names, login names, and email addresses — a ready-made phishing
+    and password-spray list. I paged the enabled users, tagged by business unit:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
+      ?$select=fullname,domainname,internalemailaddress,isdisabled
+      &amp;$expand=businessunitid($select=name)
+      &amp;$filter=isdisabled eq false&amp;$top=5000
+Authorization: Bearer &lt;token&gt;
 
-    <h2 class="ui header"><i class="eye slash icon"></i> Test 4 — Field-level security on the PII that matters</h2>
-    <p>Role privileges are per-table; <strong>field-level security</strong> is how you protect
-    individual columns like a national ID or a bank reference regardless of who can see the row.
-    You mark a column as <em>secured</em>, then a <strong>Field Security Profile</strong> decides who
-    can Read / Update / Create that column.</p>
-    <p>The custom <code>claim</code> table had a <code>national_id</code> column holding exactly the
-    kind of data you never want to explain to a regulator — and it was <strong>not secured</strong>.
-    That meant it flowed through both the authenticated Web API and (because of Test 2) the portal
-    feed, in cleartext:</p>
-    <pre>GET .../claims?$select=claim_number,national_id,claimant_email
-# national_id returned in full — no field security profile in the way</pre>
-    <p>Securing the column and scoping a profile to just the claims-handling team removed it from
-    every response for everyone else, without changing a single security role.</p>
+{
+  "value": [
+    { "fullname": "Jane R.", "domainname": "jane.r@example.com",  "businessunitid": { "name": "EMEA Sales" } },
+    { "fullname": "Omar K.", "domainname": "omar.k@example.com",  "businessunitid": { "name": "Claims Processing" } },
+    ... hundreds more ...
+  ]
+}</pre>
+    <p>Then I turned the lens on my own token — a self-lookup by the <code>UserId</code> from WhoAmI,
+    expanding the role association to see exactly what I hold:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers(a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d)
+      ?$select=fullname,applicationid
+      &amp;$expand=systemuserroles_association($select=name)
 
-    <h2 class="ui header"><i class="robot icon"></i> Test 5 — Application users &amp; service principals</h2>
-    <p>Application users (service principals registered in Dataverse) are the accounts nobody watches.
-    They authenticate with a client secret or certificate and carry whatever security role they were
-    given. I enumerated them and checked their roles:</p>
-    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid,isdisabled&amp;$filter=applicationid ne null</pre>
-    <p>One integration app — wired into a Power Automate flow — held <strong>System Administrator</strong>.
-    Its client secret was pasted into the flow's connection and had <strong>no expiry</strong>. Anyone
-    who could read that flow definition, or who lifted the secret from source control, would inherit
-    god-mode over the whole environment. Application users should get a <em>narrow custom role</em>
-    scoped to the exact tables they integrate, secrets should be short-lived and stored in Key Vault,
-    and certificate auth is preferable to a shared secret.</p>
+{
+  "fullname":      "Service Account – Integrations",
+  "applicationid": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "systemuserroles_association": [
+    { "name": "Salesperson (custom)" },
+    { "name": "System Administrator" }
+  ]
+}</pre>
+    <p>That last line is the tell: my token isn't a person at all — it's an <strong>application
+    user</strong> (note the <code>applicationid</code>) carrying <strong>System Administrator</strong>.
+    User recon just became admin recon.</p>
+
+    <h2 class="ui header"><i class="user secret icon"></i> Admin Reconnaissance</h2>
+    <p>The final move is to enumerate privilege directly: who holds the powerful roles, and which of
+    those accounts are non-human. OData lets you filter <code>systemusers</code> by role association,
+    so one request lists every System Administrator in the org:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
+      ?$select=fullname,domainname,applicationid,isdisabled
+      &amp;$filter=systemuserroles_association/any(r:r/name eq 'System Administrator')
+Authorization: Bearer &lt;token&gt;</pre>
+    <p>And the accounts nobody watches — application users (service principals) — fall out of a single
+    filter on <code>applicationid</code>:</p>
+    <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers?$select=fullname,applicationid&amp;$filter=applicationid ne null</pre>
+    <p>The results were the finding. Alongside a healthy handful of interactive admins, the
+    integration app from the user-recon step held <strong>System Administrator</strong> — and its
+    client secret was pasted straight into a Power Automate flow connection with <strong>no
+    expiry</strong>. Anyone who could read that flow definition, or who lifted the secret from source
+    control, would inherit god-mode over the entire environment. Application users should carry a
+    <em>narrow custom role</em> scoped to the exact tables they integrate; secrets should be
+    short-lived, stored in Key Vault, and certificate auth preferred over a shared secret.</p>
 
     <h2 class="ui header"><i class="clipboard list icon"></i> Findings summary</h2>
     <table class="ui celled striped table">
       <thead><tr><th>#</th><th>Finding</th><th>Severity</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td>Power Pages: <code>contacts</code> readable over anonymous OData (Global-scope table permission on the Anonymous web role)</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
-        <tr><td>2</td><td>Custom <code>claim.national_id</code> PII exposed with no field-level security</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
-        <tr><td>3</td><td>Application user with System Administrator + non-expiring client secret in a flow</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
-        <tr><td>4</td><td>Two roles with Organization-level read on <code>contact</code> / <code>incident</code> / <code>claim</code></td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
-        <tr><td>5</td><td>Environment has no security group — reachable by all licensed tenant users</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
-        <tr><td>6</td><td>Dataverse auditing disabled on sensitive tables — no record of bulk reads</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
+        <tr><td>1</td><td>Application user (service principal) holds System Administrator with a non-expiring client secret pasted into a Power Automate flow</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
+        <tr><td>2</td><td><code>systemuser</code> / <code>businessunit</code> readable in bulk by ordinary roles — full directory &amp; org map exported via OData</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
+        <tr><td>3</td><td>More interactive accounts hold System Administrator than the business needs</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
+        <tr><td>4</td><td>Environment has no security group — every licensed tenant user is a valid <code>systemuser</code></td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
+        <tr><td>5</td><td>Dataverse auditing disabled — bulk recon of users/roles leaves no trail</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
       </tbody>
     </table>
 
@@ -233,12 +231,11 @@ Authorization: Bearer &lt;user-or-app-token&gt;</pre>
     <table class="ui teal celled striped table">
       <thead><tr><th>Area</th><th>Action</th></tr></thead>
       <tbody>
-        <tr><td>Portal / Power Pages</td><td>Review every table permission; remove Global scope; never grant read to the <em>Anonymous</em> role unless the data is truly public. Turn off the Web API for tables that don't need it.</td></tr>
-        <tr><td>Environment fencing</td><td>Assign a security group to every non-trivial environment so only intended users can access it.</td></tr>
-        <tr><td>Security roles</td><td>Least privilege: keep read depth at User/BU for sensitive tables. Audit cloned roles for drift; avoid Organization scope on PII tables.</td></tr>
-        <tr><td>Field-level security</td><td>Secure PII/financial columns (national IDs, payment refs) and scope Field Security Profiles to the teams that genuinely need them.</td></tr>
-        <tr><td>Application users</td><td>Narrow custom roles per integration; short-lived secrets in Key Vault or certificate auth; disable unused app users.</td></tr>
-        <tr><td>Monitoring</td><td>Enable Dataverse auditing on sensitive tables; surface bulk <code>RetrieveMultiple</code> and export activity via Purview / the audit log; alert on anonymous portal volume spikes.</td></tr>
+        <tr><td>Application users</td><td>Narrow custom role per integration; short-lived secrets in Key Vault or certificate auth; disable unused app users; never leave a service principal on System Administrator.</td></tr>
+        <tr><td>Admin roles</td><td>Keep System Administrator to a small named set; use just-in-time / PIM elevation rather than standing admin.</td></tr>
+        <tr><td>Directory exposure</td><td>Treat <code>systemuser</code>/<code>businessunit</code> read as sensitive — restrict read depth so ordinary users can't export the whole directory via the Web API.</td></tr>
+        <tr><td>Environment fencing</td><td>Assign a security group to every non-trivial environment so only intended users become systemusers.</td></tr>
+        <tr><td>Monitoring</td><td>Enable Dataverse auditing; surface bulk <code>RetrieveMultiple</code> on <code>systemusers</code>/<code>roles</code> via Purview; alert on recon-shaped query volume.</td></tr>
       </tbody>
     </table>
 
@@ -246,20 +243,20 @@ Authorization: Bearer &lt;user-or-app-token&gt;</pre>
     <table class="ui blue celled striped table">
       <thead><tr><th>Tactic</th><th>Technique</th></tr></thead>
       <tbody>
-        <tr><td>Discovery</td><td>T1526 — Cloud Service Discovery (enumerating the Dataverse / portal Web API and <code>$metadata</code>)</td></tr>
-        <tr><td>Discovery</td><td>T1087.004 — Account Discovery: Cloud Account (systemusers / application users)</td></tr>
-        <tr><td>Collection</td><td>T1213 — Data from Information Repositories (Dataverse tables: contacts, cases, claims)</td></tr>
-        <tr><td>Collection / Exfiltration</td><td>T1530 — Data from Cloud Storage (bulk OData reads of PII)</td></tr>
-        <tr><td>Defense Evasion / Persistence</td><td>T1078.004 — Valid Accounts: Cloud Accounts (over-privileged application user &amp; secret)</td></tr>
+        <tr><td>Discovery</td><td>T1526 — Cloud Service Discovery (WhoAmI, <code>$metadata</code>)</td></tr>
+        <tr><td>Discovery</td><td>T1087.004 — Account Discovery: Cloud Account (<code>systemusers</code>, application users)</td></tr>
+        <tr><td>Discovery</td><td>T1069.003 — Permission Groups Discovery: Cloud Groups (<code>roles</code>, business units)</td></tr>
+        <tr><td>Collection</td><td>T1213 — Data from Information Repositories (bulk directory export)</td></tr>
+        <tr><td>Persistence / Defense Evasion</td><td>T1078.004 — Valid Accounts: Cloud Accounts (over-privileged application user &amp; secret)</td></tr>
       </tbody>
     </table>
 
     <h2 class="ui header"><i class="lightbulb icon"></i> The takeaway</h2>
-    <p>Not one of these findings needed an exploit. Dynamics 365 gave the attacker everything through
-    the front door — a well-documented OData API and a security model that had been loosened one
-    reasonable-looking click at a time. Auditing it isn't about finding a bug; it's about walking
-    every door the platform opens and asking <em>who is actually standing on the other side</em>.
-    Do that on a schedule, because the config drifts back.</p>
+    <p>Not one step here needed an exploit. From a single token, four OData calls — WhoAmI, business
+    units, users, admins — reconstructed the org's entire identity and privilege map and surfaced a
+    service principal with standing god-mode. Dynamics 365 gives that away through the front door to
+    anyone with a role, because the security model had been loosened one reasonable-looking click at a
+    time. Audit it on a schedule and walk the recon yourself — because the config drifts back.</p>
 
   </div>
 
