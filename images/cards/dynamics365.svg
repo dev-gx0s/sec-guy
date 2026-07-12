@@ -1,26 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a3a8f"/>
-      <stop offset="1" stop-color="#3b7bd5"/>
+      <stop offset="0" stop-color="#0d0d12"/>
+      <stop offset="1" stop-color="#3a0b0b"/>
     </linearGradient>
   </defs>
   <rect width="400" height="180" fill="url(#g)"/>
-  <circle cx="340" cy="40" r="72" fill="#ffffff" opacity="0.06"/>
-  <circle cx="55" cy="150" r="46" fill="#ffffff" opacity="0.06"/>
-  <!-- database stack -->
-  <g transform="translate(250,44)" fill="#ffffff">
-    <ellipse cx="46" cy="10" rx="46" ry="14" opacity="0.95"/>
-    <path d="M0 10 v26 a46 14 0 0 0 92 0 v-26 a46 14 0 0 1 -92 0 z" opacity="0.75"/>
-    <path d="M0 36 v26 a46 14 0 0 0 92 0 v-26 a46 14 0 0 1 -92 0 z" opacity="0.55"/>
-    <path d="M0 62 v26 a46 14 0 0 0 92 0 v-26 a46 14 0 0 1 -92 0 z" opacity="0.4"/>
+  <circle cx="345" cy="40" r="70" fill="#ffffff" opacity="0.05"/>
+  <circle cx="55" cy="150" r="46" fill="#ff2e2e" opacity="0.07"/>
+
+  <!-- faint database stack (Dataverse) behind the skull -->
+  <g transform="translate(286,96)" fill="#ff5a5a" opacity="0.18">
+    <ellipse cx="46" cy="8" rx="46" ry="11"/>
+    <path d="M0 8 v20 a46 11 0 0 0 92 0 v-20 a46 11 0 0 1 -92 0 z"/>
+    <path d="M0 28 v20 a46 11 0 0 0 92 0 v-20 a46 11 0 0 1 -92 0 z"/>
   </g>
-  <!-- exposure / open padlock -->
-  <g transform="translate(258,150)" fill="none" stroke="#ffd54f" stroke-width="5" stroke-linecap="round">
-    <rect x="0" y="10" width="30" height="22" rx="3" fill="#ffd54f" stroke="none"/>
-    <path d="M6 10 v-6 a9 9 0 0 1 18 0"/>
+
+  <!-- skull -->
+  <g transform="translate(292,26)">
+    <ellipse cx="40" cy="34" rx="34" ry="31" fill="#ececf0"/>
+    <rect x="25" y="56" width="30" height="20" rx="7" fill="#ececf0"/>
+    <circle cx="28" cy="33" r="9.5" fill="#ff2e2e"/>
+    <circle cx="52" cy="33" r="9.5" fill="#ff2e2e"/>
+    <path d="M40 40 l-5 11 h10 z" fill="#2a0a0a"/>
+    <g stroke="#c9c9cf" stroke-width="2">
+      <line x1="34" y1="60" x2="34" y2="74"/>
+      <line x1="40" y1="60" x2="40" y2="76"/>
+      <line x1="46" y1="60" x2="46" y2="74"/>
+    </g>
   </g>
-  <text x="22" y="44" font-family="Helvetica,Arial,sans-serif" font-size="19" font-weight="bold" fill="#ffffff">Dynamics 365</text>
-  <text x="22" y="70" font-family="Helvetica,Arial,sans-serif" font-size="13" fill="#dfe7f5">Dataverse data-exposure audit</text>
-  <text x="22" y="150" font-family="monospace" font-size="12" fill="#bcd0f0">GET /api/data/v9.2/WhoAmI</text>
+
+  <text x="22" y="46" font-family="Helvetica,Arial,sans-serif" font-size="26" font-weight="bold" fill="#ff3b3b">RED TEAM</text>
+  <text x="22" y="70" font-family="Helvetica,Arial,sans-serif" font-size="13" fill="#c9c9cf">Hacking Dynamics 365 &amp; Dataverse</text>
+  <text x="22" y="152" font-family="monospace" font-size="12" fill="#37e06b">root@dataverse:~$ whoami</text>
 </svg>
