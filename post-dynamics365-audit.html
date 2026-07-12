@@ -215,18 +215,6 @@ Authorization: Bearer &lt;token&gt;</pre>
     <em>narrow custom role</em> scoped to the exact tables they integrate; secrets should be
     short-lived, stored in Key Vault, and certificate auth preferred over a shared secret.</p>
 
-    <h2 class="ui header"><i class="clipboard list icon"></i> Findings summary</h2>
-    <table class="ui celled striped table">
-      <thead><tr><th>#</th><th>Finding</th><th>Severity</th></tr></thead>
-      <tbody>
-        <tr><td>1</td><td>Application user (service principal) holds System Administrator with a non-expiring client secret pasted into a Power Automate flow</td><td><span style="color:#db2828;font-weight:700;">Critical</span></td></tr>
-        <tr><td>2</td><td><code>systemuser</code> / <code>businessunit</code> readable in bulk by ordinary roles — full directory &amp; org map exported via OData</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
-        <tr><td>3</td><td>More interactive accounts hold System Administrator than the business needs</td><td><span style="color:#f2711c;font-weight:700;">High</span></td></tr>
-        <tr><td>4</td><td>Environment has no security group — every licensed tenant user is a valid <code>systemuser</code></td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
-        <tr><td>5</td><td>Dataverse auditing disabled — bulk recon of users/roles leaves no trail</td><td><span style="color:#fbbd08;font-weight:700;">Medium</span></td></tr>
-      </tbody>
-    </table>
-
     <h2 class="ui header"><i class="wrench icon"></i> Remediation &amp; hardening checklist</h2>
     <table class="ui teal celled striped table">
       <thead><tr><th>Area</th><th>Action</th></tr></thead>
