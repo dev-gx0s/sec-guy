@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Walking Out of Dataverse: What a Single Token Exposes in Dynamics 365 | gx0s</title>
-  <meta name="description" content="An authenticated Dataverse Web API assessment of a Dynamics 365 environment — from WhoAmI through business-unit, user, and admin reconnaissance — mapping how much a single token can reach.">
+  <meta name="description" content="A Dynamics 365 red team exercise driven entirely through the Dataverse Web API — from WhoAmI through user, admin, and data reconnaissance to note/activity file attachments and workflow secrets, mapping how far a single token reaches.">
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2321ba45' d='M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
@@ -77,19 +77,20 @@
 
     <div class="ui hidden divider"></div>
 
-    <div class="ui label blue"><i class="database icon"></i> Cloud Audit</div>
+    <div class="ui label red"><i class="user secret icon"></i> Red Team</div>
     <span style="color:#888; margin-left:1em;"><i class="calendar icon"></i> 2026-06-24 &middot; 8 min read</span>
 
     <h1 class="ui header" style="margin-top:0.5em;">Walking Out of Dataverse: What a Single Token Exposes in Dynamics 365</h1>
 
-    <p><em>Summary: A security assessment of a <strong>Dynamics 365</strong> environment,
-    driven entirely through the <strong>Dataverse Web API</strong>. Given one ordinary authenticated
-    token, how much of the organization can it map? Everything below runs against a single endpoint,
-    <code>https://&lt;org&gt;.crm.dynamics.com/api/data/v9.2/</code>, and follows the reconnaissance
-    an attacker runs the moment they land: <strong>WhoAmI</strong> to fix the identity,
-    <strong>business units</strong> to learn the org's shape, <strong>user recon</strong> to build a
-    directory, and <strong>admin recon</strong> to find the accounts worth stealing. No exploit —
-    just OData and a security model that had drifted.</em></p>
+    <p><em>Summary: A red team exercise against a <strong>Dynamics 365</strong> environment, run
+    entirely through the <strong>Dataverse Web API</strong>. Handed one ordinary authenticated token,
+    how far can an operator get with no exploit — just OData? Everything below runs against a single
+    endpoint, <code>https://&lt;org&gt;.crm.dynamics.com/api/data/v9.2/</code>, and follows the path
+    an attacker takes the moment they land: <strong>WhoAmI</strong> to fix the identity,
+    <strong>business units</strong> to learn the org's shape, <strong>user and admin recon</strong> to
+    find the accounts worth stealing, then straight into the crown jewels — custom tables, the files
+    attached to records and emails, and the workflows that move it all. No exploit — just OData and a
+    security model that had drifted.</em></p>
 
     <div class="killchain">
       <div class="kc-stage"><span class="kc-icon"><i class="user icon"></i></span><div class="kc-title">WhoAmI</div><div class="kc-sub">Fix the identity context</div></div>
@@ -97,8 +98,11 @@
       <div class="kc-stage"><span class="kc-icon"><i class="address book icon"></i></span><div class="kc-title">User Recon</div><div class="kc-sub">Enumerate every systemuser</div></div>
       <div class="kc-stage"><span class="kc-icon"><i class="user secret icon"></i></span><div class="kc-title">Admin Recon</div><div class="kc-sub">Find the privileged accounts</div></div>
       <div class="kc-stage"><span class="kc-icon"><i class="table icon"></i></span><div class="kc-title">Custom Tables</div><div class="kc-sub">Locate the corporate data</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="sticky note outline icon"></i></span><div class="kc-title">Annotations</div><div class="kc-sub">Pull note attachments</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="paperclip icon"></i></span><div class="kc-title">Attachments</div><div class="kc-sub">Activity file content</div></div>
+      <div class="kc-stage"><span class="kc-icon"><i class="cogs icon"></i></span><div class="kc-title">Workflows</div><div class="kc-sub">Automation &amp; secrets</div></div>
     </div>
-    <div class="kc-caption">The recon path — from one token to a full identity, privilege &amp; data map.</div>
+    <div class="kc-caption">The full attack path — from one token to identity, privilege, data, files, and automation.</div>
 
     <h2 class="ui header"><i class="bullseye icon"></i> Why Dynamics 365 is a juicy target</h2>
     <p>Dynamics 365 sits on top of <strong>Dataverse</strong> (the platform formerly known as the
@@ -110,8 +114,8 @@
     privilege model — who exists, how the org is carved up, and who holds the keys.</p>
     <p>The security model is capable — role-based access, ownership, business units, field-level
     security — but every control is opt-in and easy to loosen. Reconnaissance is how an attacker
-    finds the loose one. This engagement walks that recon exactly as an adversary would, then reports
-    what it exposed.</p>
+    finds the loose one. This red team exercise walks that path exactly as an adversary would, then
+    reports what a single token exposed.</p>
 
     <figure>
       <svg viewBox="0 0 820 320" width="100%" style="border:1px solid #d4d4d5;border-radius:6px;background:#fff;height:auto;" role="img" aria-label="Dynamics 365, Power Platform, and Power BI architecture on Dataverse" font-family="Helvetica,Arial,sans-serif">
@@ -151,7 +155,7 @@
     </figure>
 
     <h2 class="ui header"><i class="map signs icon"></i> The one endpoint that matters</h2>
-    <p>The whole assessment runs against a single host and its Web API. These are the tables and
+    <p>The whole exercise runs against a single host and its Web API. These are the tables and
     functions the recon touches:</p>
     <table class="ui celled striped table">
       <thead><tr><th>Purpose</th><th>Endpoint</th><th>Reveals</th></tr></thead>
@@ -198,13 +202,13 @@ session.headers.update({
 r = session.get(f"{ORG}/api/data/v9.2/WhoAmI")
 print(r.status_code, r.json())</code></pre>
     </div>
-    <p>For an unattended assessment you'd swap <code>AzureCliCredential</code> for
+    <p>For an unattended operation you'd swap <code>AzureCliCredential</code> for
     <code>ClientSecretCredential</code> (an app registration's client ID + secret) or
     <code>CertificateCredential</code> — the app just needs to be provisioned as an application user
     in Dataverse. With a live <code>session</code> in hand, the recon begins.</p>
 
     <h2 class="ui header"><i class="user icon"></i> WhoAmI</h2>
-    <p>Every Dataverse assessment starts here. Before enumerating anything you need to know which
+    <p>Every Dataverse red team engagement starts here. Before enumerating anything you need to know which
     identity your token represents, and which organization and business unit it lands in. The
     <code>WhoAmI</code> function answers all three in a single GET (it still needs a valid bearer
     token — it just takes no parameters):</p>
@@ -514,16 +518,19 @@ for f in flows:
         <tr><td>Discovery</td><td>T1087.004 — Account Discovery: Cloud Account (<code>systemusers</code>, application users)</td></tr>
         <tr><td>Discovery</td><td>T1069.003 — Permission Groups Discovery: Cloud Groups (<code>roles</code>, business units)</td></tr>
         <tr><td>Collection</td><td>T1213 — Data from Information Repositories (bulk directory export)</td></tr>
-        <tr><td>Persistence / Defense Evasion</td><td>T1078.004 — Valid Accounts: Cloud Accounts (over-privileged application user &amp; secret)</td></tr>
+        <tr><td>Defense Evasion</td><td>T1078.004 — Valid Accounts: Cloud Accounts (over-privileged application user &amp; secret)</td></tr>
       </tbody>
     </table>
 
     <h2 class="ui header"><i class="lightbulb icon"></i> The takeaway</h2>
-    <p>Not one step here needed an exploit. From a single token, four OData calls — WhoAmI, business
-    units, users, admins — reconstructed the org's entire identity and privilege map and surfaced a
-    service principal with standing god-mode. Dynamics 365 gives that away through the front door to
-    anyone with a role, because the security model had been loosened one reasonable-looking click at a
-    time. Audit it on a schedule and walk the recon yourself — because the config drifts back.</p>
+    <p>Not one step in this exercise needed an exploit. From a single token, plain OData calls
+    reconstructed the org's identity and privilege map, surfaced a service principal sitting on
+    standing god-mode, then walked straight into the crown jewels — custom tables full of PII, the
+    files attached to records and emails (Notes and activity attachments), and workflow definitions
+    leaking endpoints and secrets. That is the whole point of red-teaming it: Dynamics 365 hands all
+    of this to anyone with a role, through the front door, because the security model had been
+    loosened one reasonable-looking click at a time. Run the path yourself on a schedule — because the
+    config always drifts back.</p>
 
   </div>
 
